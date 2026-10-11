@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Сторінку не знайдено — AZART</title>
+<meta name="robots" content="noindex,nofollow">
+<style>
+  :root { color-scheme: light dark; --bg: #fff; --text: #12161c; --muted: #5b6578; --blue: #2266f2; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111214; --text: #f1f3f5; --muted: #a5abb5; --blue: #2f6bff; } }
+  body { margin: 0; min-height: 100vh; display: grid; place-content: center; text-align: center; padding: 24px;
+    font: 16px/1.5 Montserrat, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; background: var(--bg); color: var(--text); }
+  h1 { font-size: clamp(56px, 12vw, 96px); margin: 0; font-weight: 700; color: var(--blue); letter-spacing: -.02em; }
+  p { margin: 8px 0 24px; color: var(--muted); }
+  a { display: inline-block; padding: 12px 24px; border-radius: 12px; background: var(--blue); color: #fff; text-decoration: none; font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <h1>404</h1>
+  <p>Такої сторінки немає. / Page not found.</p>
+  <a id="home" href="/">На головну / Home</a>
+</main>
+<script>
+  // Сайт у репозиторії на github.io живе в підпапці /назва-репозиторію/; на власному домені — у корені.
+  (function () {
+    var seg = location.pathname.split('/')[1];
+    var project = /\.github\.io$/.test(location.hostname) && seg;
+    document.getElementById('home').href = project ? '/' + seg + '/' : '/';
+  })();
+</script>
+</body>
+</html>

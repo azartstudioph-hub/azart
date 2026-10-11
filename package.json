@@ -1,0 +1,12 @@
+{
+  "name": "azart-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AZART STUDIO: сайт замовлення фото для садочків (GitHub Pages + Google Apps Script + Google Sheets)",
+  "scripts": {
+    "dev": "node dev/server.js",
+    "test": "node --test tests/*.test.mjs tests/e2e/*.test.mjs",
+    "test:unit": "node --test tests/*.test.mjs"
+  },
+  "engines": { "node": ">=20" }
+}

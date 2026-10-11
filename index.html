@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AZART STUDIO</title>
+<meta name="description" content="AZART STUDIO — сервіс для зручного замовлення фото з дитячих садочків / A convenient photo ordering service">
+<meta name="theme-color" content="#2266f2">
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" type="image/svg+xml" href="assets/img/favicon.svg">
+<script>
+/* тема до першого малюнка — без миготіння */
+(function () { try { var m = localStorage.getItem('siteThemeMode') || 'system'; var d = m === 'dark' || (m === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches); document.documentElement.dataset.theme = d ? 'dark' : 'light'; } catch (e) {} })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="assets/css/app.css">
+</head>
+<body>
+<div id="site-header"></div>
+<main id="app">
+  <div class="home-admin container"><a class="admin-link" href="admin.html"><span class="ico" aria-hidden="true"></span><span data-i18n="home.admin">Сторінка адміністратора</span></a></div>
+  <section class="hero container" aria-labelledby="hero-title">
+    <div class="clock-pill" id="clock" aria-hidden="true"><span id="clock-time"></span><span id="clock-date"></span></div>
+    <h1 class="hero-title" id="hero-title"><span class="hero-a">AZART</span><span class="hero-b">STUDIO</span></h1>
+    <p class="hero-sub" data-i18n="home.subtitle">Сервіс для зручного замовлення фото</p>
+    <a class="cta" href="orders.html"><span data-i18n="home.cta">Замовити фотографії</span><span class="ico" id="cta-arrow" aria-hidden="true"></span></a>
+  </section>
+  <section class="how container" aria-labelledby="how-title">
+    <hr class="how-rule">
+    <h2 class="how-title" id="how-title" data-i18n="home.howTitle">Як переглянути фотографії та створити замовлення?</h2>
+    <ol class="timeline" id="timeline"></ol>
+  </section>
+</main>
+<div id="site-footer"></div>
+<noscript><p style="padding:24px;text-align:center">Для роботи сайту потрібен JavaScript. / JavaScript is required.</p></noscript>
+<script type="module" src="assets/js/pages/home.js"></script>
+</body>
+</html>
