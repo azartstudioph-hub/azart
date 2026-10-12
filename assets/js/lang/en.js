@@ -234,9 +234,6 @@ export default {
   "order.photos": "Total photos:",
   "order.total": "Order total:",
   "order.comment": "Comment",
-  "order.status": "Status",
-  "order.statusSaved": "✓ Status saved",
-  "order.statusFail": "Could not save the status",
   "order.makeSearch": "Create number string",
   "order.noNumbers": "No photo numbers",
   "order.copied": "Copied to clipboard",
@@ -255,13 +252,7 @@ export default {
   // Адмін-панель
   "admin.title": "Your forms",
   "admin.loginTitle": "Administrator sign-in",
-  "admin.loginSub": "Enter the password to manage forms, prices and orders.",
-  "admin.password": "Password",
-  "admin.signIn": "Sign in",
-  "admin.signingIn": "Checking…",
-  "admin.badPassword": "Wrong password",
   "admin.tooMany": "Too many failed attempts. Please wait a few minutes.",
-  "admin.noPassword": "The administrator password is not set on the server (Script properties → ADMIN_PASSWORD).",
   "admin.logout": "Sign out",
   "admin.backHome": "Home",
   "admin.albums.one": "{n} form",
@@ -439,7 +430,6 @@ export default {
   "imp.chk.ok": "Links between the files are fine",
   "imp.warn.dupAlbum": "Album \"{title}\" is repeated in the file.",
   "imp.warn.ordersNoId": "Orders without a valid ID: {n} - skipped.",
-  "imp.warn.ordersBadStatus": "Orders with an unknown status: {n} - set to \"New\".",
   "imp.warn.itemsNoId": "Items without a valid ID: {n} - skipped.",
   "imp.warn.itemsBadValue": "Items with an unknown type or format: {n} - value left empty.",
   "imp.warn.pricesMissing": "Prices not found: {n} ({list}) - current values stay.",
@@ -475,5 +465,9 @@ export default {
   "imp.failText": "{error} You can simply run the import again: records already added will be updated, not duplicated.",
   "imp.done": "Import finished",
   "imp.link": "Import from Wix",
+  // Google sign-in
+  "login.noClientId": "Google sign-in is not configured yet: set GOOGLE_CLIENT_ID in assets/js/config.js (see docs/SETUP.md).",
+  "login.gsiFail": "Could not load Google sign-in. Check your connection and disable ad blockers for this page.",
+  "admin.loginSubGoogle": "Sign in with your Google account to manage albums, prices and orders.",
 // __END__
 };
