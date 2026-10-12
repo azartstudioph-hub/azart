@@ -28,6 +28,14 @@ export function logout() {
   store.remove(TOKEN_KEY);
 }
 
+/** Вхід адміністратора через Google: credential — ID-токен від кнопки Google. */
+export async function loginWithGoogle(credential) {
+  const d = await api('login', { credential }, { auth: false, retries: 0 });
+  store.setJson(TOKEN_KEY, { token: d.token, expiresAt: d.expiresAt });
+  return d;
+}
+
+/** Вхід за паролем: лише для локальної розробки (на сервері вимкнено). */
 export async function login(password) {
   const d = await api('login', { password }, { auth: false });
   store.setJson(TOKEN_KEY, { token: d.token, expiresAt: d.expiresAt });
