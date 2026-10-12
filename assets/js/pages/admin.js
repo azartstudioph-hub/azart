@@ -2,7 +2,8 @@
 import { mountLayout } from '../layout.js';
 import { t, plural, getLang } from '../i18n.js';
 import { h, icon, buildUrl, fmtDateLong, $ } from '../util.js';
-import { api, errorText, login, logout, isAdminLoggedIn, ApiError } from '../api.js';
+import { api, errorText, logout, isAdminLoggedIn, ApiError } from '../api.js';
+import { mountGoogleLogin } from '../google-login.js';
 import { loadingState, errorState } from '../ui.js';
 import { getGroups } from '../drive.js';
 import { toast, confirmDialog } from '../modal.js';
@@ -17,51 +18,17 @@ const app = $('#app');
 const root = h('div', { class: 'container adm-wrap' });
 app.append(root);
 
-// ------------------------------------------------------------------ вхід
-function loginErrorText(e) {
-  if (e instanceof ApiError) {
-    if (e.code === 'BAD_PASSWORD') return t('admin.badPassword');
-    if (e.code === 'TOO_MANY') return t('admin.tooMany');
-    if (e.code === 'NOT_CONFIGURED' && /ADMIN_PASSWORD/.test(e.message)) return t('admin.noPassword');
-  }
-  return errorText(e);
-}
-
+// ------------------------------------------------------------------ вхід (через Google)
 function showLogin() {
-  const input = h('input', {
-    class: 'input adm-pass', type: 'password', id: 'adm-pass', name: 'password', autocomplete: 'current-password',
-    required: true, autofocus: true, 'aria-describedby': 'adm-err'
-  });
-  const err = h('div', { class: 'field-error', id: 'adm-err', role: 'alert', hidden: true });
-  const btn = h('button', { class: 'btn btn-primary btn-block btn-lg', type: 'submit' }, t('admin.signIn'));
-  const form = h('form', { class: 'adm-login', novalidate: true },
+  const host = h('div', { class: 'adm-google' });
+  const card = h('div', { class: 'adm-login' },
     h('span', { class: 'adm-lock' }, icon('lock', 26)),
     h('h1', { class: 'adm-login-title' }, t('admin.loginTitle')),
-    h('p', { class: 'adm-login-sub' }, t('admin.loginSub')),
-    h('label', { class: 'field' }, h('span', { class: 'bm-label' }, t('admin.password')), input),
-    err, btn,
+    h('p', { class: 'adm-login-sub' }, t('admin.loginSubGoogle')),
+    host,
     h('a', { class: 'adm-home', href: 'index.html' }, t('admin.backHome')));
-  form.addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    if (!input.value) { input.focus(); return; }
-    btn.disabled = true;
-    btn.textContent = t('admin.signingIn');
-    err.hidden = true;
-    input.classList.remove('is-invalid');
-    try {
-      await login(input.value);
-      boot();
-    } catch (e) {
-      btn.disabled = false;
-      btn.textContent = t('admin.signIn');
-      input.classList.add('is-invalid');
-      err.textContent = loginErrorText(e);
-      err.hidden = false;
-      input.select();
-    }
-  });
-  root.replaceChildren(h('div', { class: 'adm-login-wrap' }, form));
-  input.focus();
+  root.replaceChildren(h('div', { class: 'adm-login-wrap' }, card));
+  mountGoogleLogin(host, { onSuccess: boot });
 }
 
 // ------------------------------------------------------------------ панель
