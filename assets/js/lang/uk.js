@@ -234,9 +234,6 @@ export default {
   "order.photos": "Всього фото:",
   "order.total": "Сума замовлення:",
   "order.comment": "Коментар",
-  "order.status": "Статус",
-  "order.statusSaved": "✓ Статус збережено",
-  "order.statusFail": "Не вдалося зберегти статус",
   "order.makeSearch": "Створити стрічку номерів",
   "order.noNumbers": "Номерів фотографій немає",
   "order.copied": "Скопійовано в буфер обміну",
@@ -255,13 +252,7 @@ export default {
   // Адмін-панель
   "admin.title": "Ваші бланки",
   "admin.loginTitle": "Вхід для адміністратора",
-  "admin.loginSub": "Введіть пароль, щоб керувати бланками, цінами та замовленнями.",
-  "admin.password": "Пароль",
-  "admin.signIn": "Увійти",
-  "admin.signingIn": "Перевіряємо…",
-  "admin.badPassword": "Невірний пароль",
   "admin.tooMany": "Забагато невдалих спроб. Зачекайте кілька хвилин.",
-  "admin.noPassword": "На сервері не задано пароль адміністратора (Script properties → ADMIN_PASSWORD).",
   "admin.logout": "Вийти",
   "admin.backHome": "На головну",
   "admin.albums.one": "{n} бланк",
@@ -439,7 +430,6 @@ export default {
   "imp.chk.ok": "Зв'язки між файлами в порядку",
   "imp.warn.dupAlbum": "Бланк «{title}» повторюється у файлі.",
   "imp.warn.ordersNoId": "Замовлень без коректного ID: {n} — пропущено.",
-  "imp.warn.ordersBadStatus": "Замовлень з невідомим статусом: {n} — встановлено «Нове».",
   "imp.warn.itemsNoId": "Позицій без коректного ID: {n} — пропущено.",
   "imp.warn.itemsBadValue": "Позицій з невідомим типом або форматом: {n} — значення залишено порожнім.",
   "imp.warn.pricesMissing": "Не знайдено цін: {n} ({list}) — залишаться поточні значення.",
@@ -475,5 +465,9 @@ export default {
   "imp.failText": "{error} Можна просто запустити імпорт ще раз: уже додані записи оновляться, а не продублюються.",
   "imp.done": "Імпорт завершено",
   "imp.link": "Імпорт із Wix",
+  // Вхід через Google
+  "login.noClientId": "Вхід через Google ще не налаштовано: вкажіть GOOGLE_CLIENT_ID у assets/js/config.js (див. docs/SETUP.md).",
+  "login.gsiFail": "Не вдалося завантажити вхід Google. Перевірте інтернет і вимкніть блокувальники реклами для цієї сторінки.",
+  "admin.loginSubGoogle": "Увійдіть акаунтом Google, щоб керувати бланками, цінами та замовленнями.",
 // __END__
 };
