@@ -7,6 +7,14 @@ export const CONFIG = {
   // Отримується після Deploy → New deployment → Web app.
   API_URL: 'https://script.google.com/macros/s/AKfycbz_4FtianOutp7c86uA7s2JEhKp1Q3HB-Fj507ki5cfYjnf3XnfS5BKeQXiIyBBoFjNZA/exec',
 
+  // OAuth Client ID для входу адміністратора через Google (Google Cloud Console → Credentials → OAuth client ID,
+  // тип «Web application», Authorized JavaScript origins = адреса сайту). Таке саме значення задайте на сервері
+  // у властивості скрипта GOOGLE_CLIENT_ID.
+  GOOGLE_CLIENT_ID: '712838111520-8e2d90ohip1fb7venjre4f1brdeojjrj.apps.googleusercontent.com',
+
+  // Скрипт Google для кнопки входу (змінювати не потрібно; у локальній розробці підміняється).
+  GSI_SRC: 'https://accounts.google.com/gsi/client',
+
   // Ключ Google Drive API (Google Cloud Console → Credentials → API key).
   // Обмежте його: HTTP referrers = адреса вашого сайту, API = Google Drive API.
   DRIVE_API_KEY: 'AIzaSyCPtlbkqqLaFShX_feBsYGPkUhUvUUE0Ds',
