@@ -1,13 +1,13 @@
 // Перегляд одного замовлення.
 // order.html?id=ID[&key=СЕКРЕТ] — телефон і коментар бачить адміністратор або власник посилання з ключем.
-// Адміністратор додатково може змінити статус, скопіювати «стрічку номерів» для пошуку фото і видалити замовлення.
+// Адміністратор додатково може скопіювати «стрічку номерів» для пошуку фото і видалити замовлення.
 import { mountLayout } from '../layout.js';
 import { t, tv } from '../i18n.js';
 import { h, icon, params, buildUrl, copyText, $ } from '../util.js';
 import { api, errorText, logout } from '../api.js';
 import { loadInto } from '../ui.js';
 import { formatMoney } from '../pricing.js';
-import { sizeLabel, STATUSES } from '../domain.js';
+import { sizeLabel } from '../domain.js';
 import { confirmDialog, toast } from '../modal.js';
 
 mountLayout({ active: 'orders' });
@@ -50,31 +50,6 @@ function table(order) {
       : h('div', { class: 'state' }, h('p', null, t('order.noItems'))));
 }
 
-function statusEditor(order) {
-  const select = h('select', { class: 'select ord-status-select', 'aria-label': t('order.status') },
-    STATUSES.map((s) => h('option', { value: s, selected: s === order.status }, tv(s))));
-  const saved = h('span', { class: 'ord-saved', role: 'status', hidden: true }, t('order.statusSaved'));
-  const btn = h('button', { class: 'btn btn-dark btn-sm', type: 'button' }, t('common.save'));
-  let timer = 0;
-  btn.addEventListener('click', async () => {
-    btn.disabled = true;
-    try {
-      await api('setOrderStatus', { id: order.id, status: select.value }, { retries: 0 });
-      order.status = select.value;
-      saved.hidden = false;
-      clearTimeout(timer);
-      timer = setTimeout(() => { saved.hidden = true; }, 2000);
-    } catch (e) {
-      toast(errorText(e) || t('order.statusFail'), 'error', 6000);
-    } finally {
-      btn.disabled = false;
-    }
-  });
-  return h('div', { class: 'ord-status' },
-    h('div', { class: 'ord-label' }, t('order.status')),
-    h('div', { class: 'ord-status-row' }, select, btn, saved));
-}
-
 /** Нижня панель адміністратора: «стрічка номерів» для пошуку фото в провіднику. */
 function searchBar(order) {
   const numbers = [];
@@ -114,7 +89,6 @@ function sideCard(order, admin, canSeeAll) {
       h('span', null, t('order.total')),
       h('b', null, money(order.totalPrice))),
     order.isFullSession ? h('div', { class: 'ord-session' }, icon('camera', 18), h('span', null, t('order.fullSession'))) : null,
-    admin ? statusEditor(order) : null,
     h('div', { class: 'ord-label ord-label-comment' }, t('order.comment')),
     h('div', { class: 'ord-comment' + (comment ? '' : ' is-empty') }, commentText),
     !canSeeAll ? h('p', { class: 'ord-privacy' }, icon('lock', 15), h('span', null, t('order.privacy'))) : null);
