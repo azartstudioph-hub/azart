@@ -146,18 +146,16 @@ function cleanComment(v) {
 export function parseOrders(rows) {
   const warnings = [];
   const list = [];
-  let badStatus = 0, noId = 0;
+  let noId = 0;
   rows.forEach((r) => {
     const id = str(val(r, 'ID'));
     if (!/^[\w-]{1,64}$/.test(id)) { noId++; return; }
-    const status = str(val(r, 'status'));
-    if (!STATUSES.includes(status)) badStatus++;
     list.push({
       id, albumId: str(val(r, 'albumId')),
       clientName: str(val(r, 'clientName')).replace(/\s+/g, ' '),
       phone: str(val(r, 'phoneNumber')),
       comment: cleanComment(val(r, 'comment')),
-      status: STATUSES.includes(status) ? status : STATUSES[0],
+      status: STATUSES[0],
       groupFolderId: str(val(r, 'groupFolderId')),
       groupName: cleanGroupName(val(r, 'groupName')),
       createdAt: isoDate(val(r, 'Created Date')) || isoDate(val(r, 'createdDate')),
@@ -167,7 +165,6 @@ export function parseOrders(rows) {
     });
   });
   if (noId) warnings.push({ key: 'ordersNoId', vars: { n: noId } });
-  if (badStatus) warnings.push({ key: 'ordersBadStatus', vars: { n: badStatus } });
   return { list, warnings };
 }
 
