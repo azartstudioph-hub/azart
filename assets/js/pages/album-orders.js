@@ -1,7 +1,7 @@
 // Список замовлень бланка (за потреби — однієї групи).
-// Усі бачать імена й суми карток; загальну суму, кнопку «Друкувати» та статуси бачить лише адміністратор.
+// Усі бачать імена й суми карток; загальну суму та кнопку «Друкувати» бачить лише адміністратор.
 import { mountLayout } from '../layout.js';
-import { t, tv } from '../i18n.js';
+import { t } from '../i18n.js';
 import { h, icon, params, buildUrl, initials, debounce, $ } from '../util.js';
 import { api, logout } from '../api.js';
 import { loadInto } from '../ui.js';
@@ -15,7 +15,6 @@ const groupId = q.get('group') || '';
 const groupName = q.get('groupName') || '';
 
 const money = (n) => `${formatMoney(n)} ${t('common.currency')}`;
-const STATUS_CLASS = { 'Нове': 'badge-new', 'В роботі': 'badge-work', 'Готово': 'badge-done' };
 
 const app = $('#app');
 const back = h('a', { class: 'back-link', href: 'orders.html' }, icon('arrowLeft', 18), h('span', null, t('blanks.back')));
@@ -33,8 +32,7 @@ function orderCard(o, admin) {
       h('span', { class: 'aord-ava', 'aria-hidden': 'true' }, initials(o.clientName)),
       h('h2', { class: 'aord-name' }, o.clientName || '—')),
     h('div', { class: 'aord-mid' },
-      h('div', { class: 'aord-sum' }, money(o.totalPrice)),
-      admin && o.status ? h('span', { class: 'badge ' + (STATUS_CLASS[o.status] || 'badge-new') }, tv(o.status)) : null),
+      h('div', { class: 'aord-sum' }, money(o.totalPrice))),
     h('a', { class: 'btn btn-primary btn-block aord-open', href: buildUrl('order.html', { id: o.id }) }, t('aorders.open')));
 }
 
