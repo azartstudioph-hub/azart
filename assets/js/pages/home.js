@@ -2,12 +2,15 @@
 import { mountLayout } from '../layout.js';
 import { t, getLang, applyI18n } from '../i18n.js';
 import { h, icon, fmtTime, fmtDateClock } from '../util.js';
+import { isAdminLoggedIn } from '../api.js';
 
 mountLayout({ active: 'home' });
 document.title = 'AZART STUDIO';
 
 // іконки, які вставляються з JS
 document.querySelector('.admin-link .ico').replaceWith(icon('lock', 16));
+// кнопка «Сторінка адміністратора» — лише для вже увійшовшого адміністратора (клієнти її не бачать)
+document.getElementById('home-admin').hidden = !isAdminLoggedIn();
 document.getElementById('cta-arrow').replaceWith(icon('arrowRight', 20));
 
 // інструкція: 7 кроків
