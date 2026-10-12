@@ -70,6 +70,10 @@ details ul{margin:10px 0 2px;padding-left:18px;color:var(--mut);line-height:1.6;
 .bar i{display:block;height:100%;width:0;background:var(--blue);transition:width .15s}
 .log{max-height:160px;overflow:auto;font-size:13px;color:var(--mut);line-height:1.6;margin-top:8px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+#gLogin .note{padding:10px 12px;border-radius:8px;background:#fff6e8;border:1px solid #f0dca0;color:#6b4e0f;font-size:14px}
+#gLogin .field-error{color:#c0343a;font-size:13px;margin-top:8px}
+#gLogin .gsi-slot.is-busy{opacity:.5;pointer-events:none}
+#gLogin .dev-gsi-btn{padding:9px 16px;border-radius:999px;border:1px solid #c7d0dc;background:#fff;cursor:pointer;font:inherit}
 </style>
 </head>
 <body>
@@ -85,10 +89,7 @@ details ul{margin:10px 0 2px;padding-left:18px;color:var(--mut);line-height:1.6;
   <section class="step" id="s1">
     <h2><span class="n">1</span>Підключення до сайту</h2>
     <p class="msg" id="authInfo" style="margin:0 0 12px">Дані беруться з вашого сайту AZART. Потрібен пароль адміністратора (той самий, що для сторінки «Адміністратор»).</p>
-    <div class="row" id="loginRow">
-      <div class="f"><label for="pw">Пароль адміністратора</label><input id="pw" type="password" autocomplete="current-password"></div>
-      <button class="btn pri" id="connect">Підключитися</button>
-    </div>
+    <div class="row" id="loginRow"><div id="gLogin"></div></div>
     <div class="msg" id="m1"></div>
   </section>
 
@@ -129,7 +130,8 @@ details ul{margin:10px 0 2px;padding-left:18px;color:var(--mut);line-height:1.6;
 </main>
 
 <script type="module">
-import { api as callApi, login, logout, isAdminLoggedIn } from '../assets/js/api.js';
+import { api as callApi, logout, isAdminLoggedIn } from '../assets/js/api.js';
+import { mountGoogleLogin } from '../assets/js/google-login.js';
 (function () {
 "use strict";
 
@@ -306,11 +308,7 @@ async function api(params) {
 async function connect() {
   say('m1', 'Підключаємось…');
   try {
-    if (!isAdminLoggedIn()) {
-      const pw = $('pw').value;
-      if (!pw) { say('m1', 'Введіть пароль адміністратора.', true); return; }
-      await login(pw);
-    }
+    if (!isAdminLoggedIn()) { showLogin(); return; }
     const data = await api();
     $('album').innerHTML = data.albums.map(a => `<option value="${esc(a.id)}">${esc(a.title || '(без назви)')}</option>`).join('');
     const want = new URLSearchParams(location.search).get('albumId');
@@ -319,16 +317,19 @@ async function connect() {
     $('loginRow').hidden = true;
     done('s1', true); unlock('s2', true);
   } catch (e) {
-    if (e && e.code === 'UNAUTHORIZED') logout();
-    $('loginRow').hidden = false;
+    if (e && e.code === 'UNAUTHORIZED') { logout(); showLogin(); return; }
     say('m1', 'Не вдалося підключитися: ' + (e && e.message ? e.message : e), true);
   }
 }
 
-$('connect').onclick = connect;
-$('pw').addEventListener('keydown', e => { if (e.key === 'Enter') connect(); });
-// якщо ви вже входили на сторінці адміністратора — підключаємось автоматично
-if (isAdminLoggedIn()) { $('loginRow').hidden = true; connect(); }
+// Вхід адміністратора через Google (той самий акаунт, що й на сторінці адміністратора)
+function showLogin() {
+  $('loginRow').hidden = false;
+  say('m1', 'Увійдіть акаунтом Google, щоб підключитися.');
+  mountGoogleLogin($('gLogin'), { onSuccess: connect });
+}
+
+connect();
 
 // ---------- 2. Замовлення і вибір груп ----------
 const groupOf = o => o.group || 'Без групи';
