@@ -955,28 +955,32 @@ body.gallery-page { height: 100vh; height: 100dvh; overflow: hidden; display: bl
 .set-opt { font-size: 14.5px; }
 .set-help { color: var(--muted); font-size: 13px; line-height: 1.5; margin-top: 10px; }
 
-/* --- Друк замовлень -----------------------------------------------------------*/
+/* --- Друк замовлень -----------------------------------------------------------
+   Аркуш свідомо без кольорових заливок і світлих відтінків: на лазерних/струменевих принтерах
+   сірий і блідий текст розсипається на крапки. Тут чорний текст, щільні шрифт і лінії; екран = друк. */
 .prt-wrap { max-width: 1240px; padding-top: 20px; padding-bottom: 56px; }
 .prt-toolbar { display: flex; align-items: center; justify-content: center; gap: 22px; flex-wrap: wrap; margin: 6px 0 22px; }
 .prt-btn { border-radius: 999px; padding: 13px 30px; font-size: 16px; gap: 10px; }
 .prt-toggle { font-size: 14px; color: var(--muted); }
-.prt-paper { background: #fff; color: #1a2b4c; border-radius: 14px; padding: 18px; box-shadow: var(--shadow); overflow-x: auto; }
+.prt-paper {
+  background: #fff; color: #000; border-radius: 14px; padding: 18px; box-shadow: var(--shadow); overflow-x: auto;
+  font-family: 'Segoe UI', Calibri, Arial, 'Helvetica Neue', sans-serif; font-weight: 500;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
 .prt-meta { display: flex; justify-content: space-between; align-items: baseline; gap: 12px 24px; flex-wrap: wrap; margin-bottom: 14px; }
-.prt-title { font-size: 18px; font-weight: 600; color: #1a2b4c; }
-.prt-total { font-size: 20px; font-weight: 600; margin-left: auto; }
-.prt-total span { color: #1a6a3c; font-weight: 700; }
-.prt-table { width: 100%; border-collapse: collapse; font-size: 15px; border: 1px solid #c7d0dc; min-width: 720px; font-feature-settings: 'calt' 0; }
-.prt-table th { background: #2b4a76; color: #fff; font-weight: 600; text-transform: uppercase; letter-spacing: .3px; font-size: 11.5px; padding: 10px 8px; text-align: left; border: 1px solid #1f3a5f; }
-.prt-table td { padding: 7px 8px; border: 1px solid #d7dee6; vertical-align: middle; }
+.prt-title { font-size: 19px; font-weight: 700; color: #000; }
+.prt-total { font-size: 22px; font-weight: 700; margin-left: auto; color: #000; }
+.prt-total span { color: #000; font-weight: 800; }
+.prt-table { width: 100%; border-collapse: collapse; font-size: 15px; border: 2px solid #1a2b4c; min-width: 720px; font-feature-settings: 'calt' 0; color: #000; }
+.prt-table th { background: #fff; color: #1a2b4c; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; font-size: 12px; padding: 9px 8px; text-align: left; border: 1px solid #5b6b85; border-bottom: 3px solid #1a2b4c; }
+.prt-table td { padding: 7px 8px; border: 1px solid #5b6b85; vertical-align: middle; font-weight: 600; background: #fff; color: #000; }
 .prt-table .prt-count { text-align: right; width: 70px; }
 .prt-table .prt-date { text-align: center; width: 28px; white-space: nowrap; padding: 4px 2px; }
 .prt-date span { display: inline-block; writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
-.prt-table td.prt-name { background: #eef2f8; font-size: 13.5px; }
-.prt-table td.prt-sum { font-weight: 700; text-align: center; color: #1a6a3c; background: #edf7ef; font-size: 17px; white-space: nowrap; }
-.prt-table tr.is-even td:not(.prt-name):not(.prt-sum) { background: #fafbfd; }
-.prt-table tr.is-odd td:not(.prt-name):not(.prt-sum) { background: #fff; }
-.prt-table tr.is-first td { border-top: 3px solid #2b4a76; }
-.prt-table tr.prt-comment-row td { font-size: 13px; font-style: italic; color: #3a4a66; }
+.prt-table td.prt-name { font-size: 15px; font-weight: 800; }
+.prt-table td.prt-sum { font-weight: 800; text-align: center; color: #000; font-size: 18px; white-space: nowrap; }
+.prt-table tr.is-first td { border-top: 3px solid #1a2b4c; }
+.prt-table tr.prt-comment-row td { font-size: 13.5px; font-style: italic; font-weight: 600; color: #000; }
 .prt-table tr { break-inside: avoid; page-break-inside: avoid; }
 .prt-table thead { display: table-header-group; }
 @media (max-width: 700px) { .prt-paper { padding: 10px; border-radius: 10px; } .prt-total { margin-left: 0; } }
@@ -986,13 +990,14 @@ body.gallery-page { height: 100vh; height: 100dvh; overflow: hidden; display: bl
   .site-header, .site-footer, .back-link, .prt-toolbar, .toasts { display: none !important; }
   .prt-wrap { padding: 0; max-width: none; }
   .prt-paper { padding: 0; box-shadow: none; border-radius: 0; overflow: visible; }
-  .prt-title { font-size: 15px; }
-  .prt-total { font-size: 20px; }
+  .prt-title { font-size: 16px; }
+  .prt-total { font-size: 21px; }
   .prt-meta { margin-bottom: 12px; }
-  .prt-table { font-size: 11.5px; min-width: 0; }
-  .prt-table th { padding: 6px; font-size: 10px; }
+  .prt-table { font-size: 12.5px; min-width: 0; }
+  .prt-table th { padding: 6px; font-size: 10.5px; }
   .prt-table td { padding: 5px 6px; }
-  .prt-table td.prt-sum { font-size: 16px; }
+  .prt-table td.prt-name { font-size: 13px; }
+  .prt-table td.prt-sum { font-size: 17px; }
   .prt-table th, .prt-table td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 
