@@ -9,6 +9,8 @@ import { loadInto } from '../ui.js';
 import { formatMoney } from '../pricing.js';
 import { sizeLabel } from '../domain.js';
 import { confirmDialog, toast } from '../modal.js';
+import { getPhotos, thumbUrl, fallbackThumbUrl } from '../drive.js';
+import { openViewer } from '../viewer.js';
 
 mountLayout({ active: 'orders' });
 
@@ -28,8 +30,12 @@ app.append(h('div', { class: 'container ord-wrap' },
     h('p', { class: 'ord-sub' }, t('order.sub'))),
   box));
 
+/** Ключ для зіставлення «номер фото в замовленні» ↔ «файл у папці»: без розширення, без урахування регістру. */
+const photoKey = (name) => String(name || '').trim().replace(/\.[a-z0-9]{2,5}$/i, '').toLowerCase();
+
 function table(order) {
   const showPrice = !order.isFullSession;
+  const thumbs = [];
   const head = h('tr', null,
     h('th', null, t('order.colPhoto')),
     h('th', null, t('order.colType')),
@@ -37,17 +43,69 @@ function table(order) {
     h('th', null, t('order.colFormat')),
     h('th', null, t('order.colCount')),
     showPrice ? h('th', null, t('order.colPrice')) : null);
-  const rows = order.items.map((i) => h('tr', null,
-    h('td', { class: 'ord-photo', 'data-label': t('order.colPhoto') }, i.photoNumber || '—'),
-    h('td', { 'data-label': t('order.colType') }, tv(i.photoType) || '—'),
-    h('td', { 'data-label': t('order.colSize') }, i.photoSize ? sizeLabel(i.photoSize) : '—'),
-    h('td', { class: 'ord-format', 'data-label': t('order.colFormat') }, tv(i.photoFormat) || '—'),
-    h('td', { 'data-label': t('order.colCount') }, String(i.count)),
-    showPrice ? h('td', { class: 'ord-price', 'data-label': t('order.colPrice') }, money(i.price)) : null));
-  return h('div', { class: 'ord-table-wrap' },
+  const rows = order.items.map((i) => {
+    let thumb = null;
+    if (photoKey(i.photoNumber)) {
+      thumb = h('button', { class: 'ord-thumb is-loading', type: 'button', disabled: true, 'aria-label': t('form.openPhoto') + ': ' + i.photoNumber });
+      thumbs.push({ key: photoKey(i.photoNumber), btn: thumb });
+    }
+    return h('tr', null,
+      h('td', { class: 'ord-photo', 'data-label': t('order.colPhoto') },
+        h('div', { class: 'ord-pcell' }, thumb, h('span', { class: 'ord-pnum' }, i.photoNumber || '—'))),
+      h('td', { 'data-label': t('order.colType') }, tv(i.photoType) || '—'),
+      h('td', { 'data-label': t('order.colSize') }, i.photoSize ? sizeLabel(i.photoSize) : '—'),
+      h('td', { class: 'ord-format', 'data-label': t('order.colFormat') }, tv(i.photoFormat) || '—'),
+      h('td', { 'data-label': t('order.colCount') }, String(i.count)),
+      showPrice ? h('td', { class: 'ord-price', 'data-label': t('order.colPrice') }, money(i.price)) : null);
+  });
+  const node = h('div', { class: 'ord-table-wrap' },
     order.items.length
       ? h('table', { class: 'ord-table' }, h('thead', null, head), h('tbody', null, rows))
       : h('div', { class: 'state' }, h('p', null, t('order.noItems'))));
+  return { node, thumbs };
+}
+
+/** Підвантажує мініатюри з папки Google Диска групи (або бланка). Збій не ламає сторінку: лишаються заглушки. */
+async function fillThumbs(order, album, thumbs) {
+  const markMissing = (th) => {
+    th.btn.classList.remove('is-loading');
+    th.btn.classList.add('is-missing');
+    th.btn.replaceChildren(icon('camera', 22));
+    th.btn.title = t('order.thumbMissing');
+  };
+  if (!thumbs.length) return;
+  let photos = [];
+  try {
+    let folderId = order.groupFolderId || '';
+    if (!folderId && album) folderId = (await api('getAlbum', { id: album.id })).album.driveFolderId || '';
+    if (folderId) photos = await getPhotos(folderId);
+  } catch (e) { photos = []; }
+
+  const byKey = new Map();
+  photos.forEach((p) => { const k = photoKey(p.name); if (!byKey.has(k)) byKey.set(k, p); });
+
+  // у переглядачі гортаються лише знайдені фото замовлення (без повторів, у порядку таблиці)
+  const list = [];
+  const indexOf = new Map();
+  thumbs.forEach((th) => {
+    const p = byKey.get(th.key);
+    if (p && !indexOf.has(p.id)) { indexOf.set(p.id, list.length); list.push(p); }
+  });
+
+  thumbs.forEach((th) => {
+    const p = byKey.get(th.key);
+    if (!p) { markMissing(th); return; }
+    const img = h('img', { alt: p.name, loading: 'lazy', decoding: 'async', draggable: 'false' });
+    let fell = false;
+    img.addEventListener('error', () => {
+      if (!fell) { fell = true; img.src = fallbackThumbUrl(p, 320); } else markMissing(th);
+    });
+    img.addEventListener('load', () => th.btn.classList.remove('is-loading'));
+    img.src = thumbUrl(p, 320);
+    th.btn.replaceChildren(img);
+    th.btn.disabled = false;
+    th.btn.addEventListener('click', () => openViewer({ photos: list, index: indexOf.get(p.id) }));
+  });
 }
 
 /** Нижня панель адміністратора: «стрічка номерів» для пошуку фото в провіднику. */
@@ -109,7 +167,9 @@ loadInto(box, load, ({ order, album }) => {
     back.href = buildUrl('album-orders.html', { album: album.id, group: order.groupFolderId, groupName: order.groupName });
   }
 
-  box.append(h('div', { class: 'ord-grid' }, table(order), sideCard(order, admin, order.canSeeAll)));
+  const tbl = table(order);
+  box.append(h('div', { class: 'ord-grid' }, tbl.node, sideCard(order, admin, order.canSeeAll)));
+  fillThumbs(order, album, tbl.thumbs);
 
   if (admin) {
     const bar = searchBar(order);
