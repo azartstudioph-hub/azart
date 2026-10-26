@@ -27,32 +27,38 @@ function sheet(album, orders, showComments) {
   const grand = orders.reduce((s, o) => s + (Number(o.totalPrice) || 0), 0);
   const head = h('tr', null,
     h('th', null, t('print.colName')),
-    h('th', { class: 'prt-date' }, h('span', null, t('print.colDate'))),
+    h('th', { class: 'prt-date' }, t('print.colDate')),
     h('th', null, t('print.colPhoto')), h('th', null, t('print.colType')), h('th', null, t('print.colFormat')),
     h('th', null, t('print.colSize')), h('th', { class: 'prt-count' }, t('print.colCount')), h('th', null, t('print.colSum')));
 
+  // Без rowspan: об'єднані комірки (ПІБ, дата, сума) стоять лише в першому рядку замовлення, а в інших рядках
+  // порожні й без внутрішніх ліній. Так браузер може безпечно переносити рядки між сторінками.
   const rows = [];
+  const merge = (cls, content) => h('td', { class: `prt-merge ${cls}`.trim() }, content);
   orders.forEach((o, idx) => {
     const parity = idx % 2 === 0 ? 'is-even' : 'is-odd';
     const comment = showComments ? String(o.comment || '').trim() : '';
-    const span = Math.max(o.items.length, 1) + (comment ? 1 : 0);
-    const lead = [
-      h('td', { class: 'prt-name', rowspan: span }, o.clientName),
-      h('td', { class: 'prt-date', rowspan: span }, h('span', null, fmtDateShort(o.createdAt)))
-    ];
-    const sum = h('td', { class: 'prt-sum', rowspan: span }, money(o.totalPrice));
+    const lead = [merge('prt-name', o.clientName), merge('prt-date', fmtDateShort(o.createdAt))];
+    const sum = merge('prt-sum', money(o.totalPrice));
+    const blank = [merge('', null), merge('', null)];
+    const blankSum = merge('', null);
     if (!o.items.length) {
       rows.push(h('tr', { class: `${parity} is-first` }, lead, h('td', { colspan: 5 }, t('print.noItems')), sum));
     } else {
       o.items.forEach((it, i) => {
         rows.push(h('tr', { class: `${parity}${i === 0 ? ' is-first' : ''}` },
-          i === 0 ? lead : null,
+          i === 0 ? lead : blank.map((c) => c.cloneNode(true)),
           h('td', null, it.photoNumber), h('td', null, tv(it.photoType)), h('td', null, tv(it.photoFormat)),
           h('td', null, it.photoSize ? sizeLabel(it.photoSize) : '-'), h('td', { class: 'prt-count' }, String(it.count)),
-          i === 0 ? sum : null));
+          i === 0 ? sum : blankSum.cloneNode(true)));
       });
     }
-    if (comment) rows.push(h('tr', { class: `${parity} prt-comment-row` }, h('td', { colspan: 5 }, h('b', null, t('print.comment') + ' '), comment)));
+    if (comment) {
+      rows.push(h('tr', { class: `${parity} prt-comment-row` },
+        blank.map((c) => c.cloneNode(true)),
+        h('td', { colspan: 5 }, h('b', null, t('print.comment') + ' '), comment),
+        blankSum.cloneNode(true)));
+    }
   });
 
   const title = [album.title, groupName].filter(Boolean).join(' · ');

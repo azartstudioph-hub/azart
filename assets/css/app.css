@@ -977,11 +977,15 @@ body.gallery-page { height: 100vh; height: 100dvh; overflow: hidden; display: bl
 .prt-table th { background: #fff; color: #1a2b4c; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; font-size: 12px; padding: 9px 8px; text-align: left; border: 1px solid #5b6b85; border-bottom: 3px solid #1a2b4c; }
 .prt-table td { padding: 7px 8px; border: 1px solid #5b6b85; vertical-align: middle; font-weight: 600; background: #fff; color: #000; }
 .prt-table .prt-count { text-align: right; width: 70px; }
-.prt-table .prt-date { text-align: center; width: 28px; white-space: nowrap; padding: 4px 2px; }
-.prt-date span { display: inline-block; writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
-.prt-table td.prt-name { font-size: 15px; font-weight: 800; }
-.prt-table td.prt-sum { font-weight: 800; text-align: center; color: #000; font-size: 18px; white-space: nowrap; }
+.prt-table .prt-date { text-align: center; width: 66px; white-space: nowrap; padding: 7px 4px; font-size: 12.5px; }
+.prt-table td.prt-name { font-size: 15px; font-weight: 800; vertical-align: top; }
+.prt-table td.prt-date { vertical-align: top; }
+.prt-table td.prt-sum { font-weight: 800; text-align: center; color: #000; font-size: 18px; white-space: nowrap; vertical-align: top; }
+/* «злиті» стовпці: між рядками одного замовлення ліній немає */
+.prt-table td.prt-merge { border-top: 0; border-bottom: 0; }
 .prt-table tr.is-first td { border-top: 3px solid #1a2b4c; }
+.prt-table tr.is-first td.prt-merge { border-top: 3px solid #1a2b4c; }
+.prt-table tr.is-first { break-after: avoid; page-break-after: avoid; }
 .prt-table tr.prt-comment-row td { font-size: 13.5px; font-style: italic; font-weight: 600; color: #000; }
 .prt-table tr { break-inside: avoid; page-break-inside: avoid; }
 .prt-table thead { display: table-header-group; }
@@ -999,6 +1003,7 @@ body.gallery-page { height: 100vh; height: 100dvh; overflow: hidden; display: bl
   .prt-table th { padding: 6px; font-size: 10.5px; }
   .prt-table td { padding: 5px 6px; }
   .prt-table td.prt-name { font-size: 13px; }
+  .prt-table .prt-date { font-size: 11px; width: 58px; }
   .prt-table td.prt-sum { font-size: 17px; }
   .prt-table th, .prt-table td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
