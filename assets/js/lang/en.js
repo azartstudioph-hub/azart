@@ -52,7 +52,7 @@ export default {
   "home.step5": "The photo list is split into rows. In each row set the number of prints, the size and the option.",
   "home.step6": "The price per photo is shown next to each row. After adding all photos you can see the order total below.",
   "home.step7": "The total may change if a discount applies. Confirm your order and wait until it is accepted.",
-  "orders.title": "How to create an order?",
+  "orders.title": "Create an order",
   "orders.createTitle": "Create an order",
   "orders.createDesc": "Choose your kindergarten and group to create an order",
   "orders.viewTitle": "View orders",
