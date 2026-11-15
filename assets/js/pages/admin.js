@@ -10,6 +10,7 @@ import { toast, confirmDialog } from '../modal.js';
 import { openBlankModal } from '../admin/blank-modal.js';
 import { openPricesModal } from '../admin/prices-modal.js';
 import { openSettingsModal } from '../admin/settings-modal.js';
+import { photoAppButton } from '../admin/photo-app.js';
 
 mountLayout({ active: null });
 document.title = t('admin.title') + ' — AZART';
@@ -147,7 +148,7 @@ function dashboard(data) {
     h('div', { class: 'adm-top' },
       h('div', null, h('h1', { class: 'adm-title' }, t('admin.title')), summary),
       h('div', { class: 'adm-top-actions' }, pricesBtn, createBtn)),
-    h('div', { class: 'adm-sub' }, settingsBtn, importLink, outBtn),
+    h('div', { class: 'adm-sub' }, photoAppButton(), settingsBtn, importLink, outBtn),
     grid, empty);
 }
 

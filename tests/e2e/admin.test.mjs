@@ -19,26 +19,45 @@ async function adminPage(opts = {}) {
 }
 const card = (page, title) => page.locator('.adm-card', { has: page.locator('.adm-card-title', { hasText: title }) });
 
-test('вхід: неправильний пароль → помилка; правильний → панель; вихід', async () => {
+test('вхід через Google: без пароля; чужий акаунт — відмова; ваш — панель; вихід', async () => {
   const page = await newPage(browser);
   await page.goto(`${app.url}/admin.html`);
   await page.waitForSelector('.adm-login');
-  await page.fill('#adm-pass', 'wrong');
-  await page.click('.adm-login button[type=submit]');
-  await page.waitForSelector('#adm-err:not([hidden])');
-  assert.match(await page.locator('#adm-err').textContent(), /Невірний пароль/);
-  assert.equal(await page.locator('.adm-card').count(), 0);
+  assert.equal(await page.locator('input[type=password]').count(), 0, 'поля пароля більше немає');
+  await page.waitForSelector('.dev-gsi-btn');
 
-  await page.fill('#adm-pass', 'admin');
-  await page.click('.adm-login button[type=submit]');
+  // чужий акаунт Google
+  await page.evaluate(() => localStorage.setItem('dev_google_email', 'stranger@example.com'));
+  await page.click('.dev-gsi-btn');
+  await page.waitForSelector('.gsi-msg:not([hidden])');
+  assert.match(await page.locator('.gsi-msg').textContent(), /не має доступу адміністратора/);
+  assert.equal(await page.locator('.adm-card').count(), 0);
+  assert.equal(await page.evaluate(() => localStorage.getItem('azart_admin_token')), null);
+
+  // акаунт власника
+  await page.evaluate(() => localStorage.setItem('dev_google_email', 'azartstudioph@gmail.com'));
+  await page.click('.dev-gsi-btn');
   await page.waitForSelector('.adm-card');
   assert.equal(await page.locator('.adm-card').count(), albumsApi().length);
 
   await page.reload();
   await page.waitForSelector('.adm-card');                 // токен збережено
-  await page.click('button.adm-link:has-text("Вийти")');                  // «Вийти»
+  await page.click('button.adm-link:has-text("Вийти")');
   await page.waitForSelector('.adm-login');
-  assert.deepEqual(page.errors.filter((e) => !/401|UNAUTH/.test(e)), []);
+  assert.deepEqual(page.errors.filter((e) => !/401|403|UNAUTH|FORBIDDEN/.test(e)), []);
+});
+
+test('головна: кнопка «Сторінка адміністратора» бачить лише адміністратор', async () => {
+  const guest = await newPage(browser);
+  await guest.goto(`${app.url}/index.html`);
+  await guest.waitForSelector('.site-header');
+  assert.equal(await guest.locator('#home-admin').isVisible(), false);
+  assert.equal(await guest.locator('.admin-link:visible').count(), 0);
+
+  const admin = await newPage(browser, { admin: tok() });
+  await admin.goto(`${app.url}/index.html`);
+  await admin.waitForSelector('#home-admin:not([hidden])');
+  assert.equal(await admin.locator('.admin-link').getAttribute('href'), 'admin.html');
 });
 
 test('застарілий / підроблений токен веде на сторінку входу', async () => {
@@ -284,4 +303,38 @@ test('друк: лише для адміністратора; від стари�
   for (const sel of ['.site-header', '.site-footer', '.prt-toolbar']) assert.equal(await page.locator(sel).isVisible(), false, sel);
   assert.equal(await page.locator('.prt-table').isVisible(), true);
   assert.deepEqual(page.errors, []);
+});
+
+test('програма обробки фото: кнопка, підказка коли не запущена, відкриття коли запущена', async () => {
+  const page = await adminPage();
+  const btn = page.locator('.pa-btn');
+  assert.equal(await btn.count(), 1, 'кнопка є в рядку посилань');
+  await page.evaluate(() => { window.__opened = []; window.open = (u) => { window.__opened.push(u); return null; }; });
+
+  // програма не запущена → підказка, індикатор гасне
+  await page.context().route('http://127.0.0.1:8765/api/ping', (r) => r.abort());
+  await btn.click();
+  await page.waitForSelector('.pa-help');
+  assert.match(await page.locator('.pa-dot').getAttribute('class'), /is-off/);
+  assert.deepEqual(await page.evaluate(() => window.__opened), [], 'нічого не відкрилось');
+
+  // вказуємо адресу, за якою програма відповідає
+  await page.context().route('http://127.0.0.1:9100/api/ping', (r) => r.fulfill({
+    status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' },
+    body: JSON.stringify({ app: 'azart-photo', version: 1 })
+  }));
+  await page.fill('.pa-help input', 'http://127.0.0.1:9100');
+  await page.click('.pa-help button:has-text("Перевірити")');
+  await page.waitForSelector('.pa-help', { state: 'detached' });
+  assert.deepEqual(await page.evaluate(() => window.__opened), ['http://127.0.0.1:9100/']);
+  assert.equal(await page.evaluate(() => localStorage.getItem('azart_photo_app_url')), 'http://127.0.0.1:9100/');
+
+  // далі кнопка відкриває одразу, без підказки
+  await btn.click();
+  await page.waitForFunction(() => window.__opened.length === 2);
+  assert.equal(await page.locator('.pa-help').count(), 0);
+  assert.match(await page.locator('.pa-dot').getAttribute('class'), /is-on/);
+
+  assert.deepEqual(page.errors, []);
+  await page.close();
 });

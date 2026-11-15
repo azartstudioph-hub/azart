@@ -5,19 +5,19 @@
 export const CONFIG = {
   // Адреса веб-застосунку Google Apps Script (закінчується на /exec).
   // Отримується після Deploy → New deployment → Web app.
-  API_URL: 'https://script.google.com/macros/s/AKfycbz_4FtianOutp7c86uA7s2JEhKp1Q3HB-Fj507ki5cfYjnf3XnfS5BKeQXiIyBBoFjNZA/exec',
+  API_URL: '',
 
   // OAuth Client ID для входу адміністратора через Google (Google Cloud Console → Credentials → OAuth client ID,
   // тип «Web application», Authorized JavaScript origins = адреса сайту). Таке саме значення задайте на сервері
   // у властивості скрипта GOOGLE_CLIENT_ID.
-  GOOGLE_CLIENT_ID: '712838111520-8e2d90ohip1fb7venjre4f1brdeojjrj.apps.googleusercontent.com',
+  GOOGLE_CLIENT_ID: '',
 
   // Скрипт Google для кнопки входу (змінювати не потрібно; у локальній розробці підміняється).
   GSI_SRC: 'https://accounts.google.com/gsi/client',
 
   // Ключ Google Drive API (Google Cloud Console → Credentials → API key).
   // Обмежте його: HTTP referrers = адреса вашого сайту, API = Google Drive API.
-  DRIVE_API_KEY: 'AIzaSyCPtlbkqqLaFShX_feBsYGPkUhUvUUE0Ds',
+  DRIVE_API_KEY: '',
 
   // Службова адреса Drive API (змінювати не потрібно; у локальній розробці підміняється).
   DRIVE_API_BASE: 'https://www.googleapis.com/drive/v3/files',
@@ -40,6 +40,12 @@ export const CONFIG = {
 
   // Програма сортування фото (сторінка зі сторінки адміністратора).
   SORTER_URL: './sorter/',
+
+  // Програма обробки фото. Вона працює на комп'ютері адміністратора, тому адреса
+  // локальна. Сайт лише перевіряє, чи вона запущена, і відкриває її в новій вкладці.
+  // Якщо змінили порт — вкажіть новий тут або просто в самій програмі (адреса
+  // запам'ятовується в браузері). Вихідний код і збірка: папка photo/.
+  PHOTO_APP_URL: 'http://127.0.0.1:8765/',
 
   // Скільки хвилин зберігається чернетка замовлення в браузері.
   DRAFT_TTL_MINUTES: 60,
