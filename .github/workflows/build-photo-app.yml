@@ -4,11 +4,15 @@ name: Зібрати AZART Фото для Windows
 # міткою photo-latest. Посилання на нього не змінюється, тому кнопку
 # «Завантажити програму» на сторінці адміністратора налаштовувати треба лише раз.
 #
-# Чому Python 3.8, а не найновіший: програми, зібрані на Python 3.9 і вище,
-# не запускаються на Windows 7 і 8 — їм потрібна бібліотека api-ms-win-core-path,
-# якої в тих системах немає. 3.8 — остання версія, що підтримує Windows 7,
-# і зібране нею працює також на Windows 10 та 11. Версії бібліотек закріплені,
-# бо новіші вже не випускають складання для 3.8.
+# Чому Python саме 3.8.10:
+#   * на 3.9 і новіших програма не запускається на Windows 7 і 8 — їм потрібна
+#     бібліотека api-ms-win-core-path, якої в тих системах немає;
+#   * у гілки 3.8 готові установники для Windows виходили лише до 3.8.10,
+#     далі публікували самі вихідні коди. Тому версію треба вказувати повністю:
+#     від запису '3.8' береться 3.8.18, складання якої під Windows не існує,
+#     і крок встановлення Python падає.
+# Зібране на 3.8.10 працює на Windows 7, 8, 10 і 11.
+# Версії бібліотек закріплені, бо новіші вже не випускають складань для 3.8.
 
 on:
   workflow_dispatch:
@@ -20,20 +24,31 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
-        with: { python-version: '3.8' }
+        with:
+          python-version: '3.8.10'
+          architecture: 'x64'
 
       - name: Встановити залежності
         working-directory: photo
+        shell: bash
         run: |
-          python -m pip install --upgrade "pip<25"
-          pip install numpy==1.24.4 opencv-python-headless==4.10.0.84 Pillow==10.4.0 pyinstaller==5.13.2
+          python -V
+          python -m pip install --upgrade "pip==24.3.1"
+          pip install --only-binary=:all: \
+            numpy==1.24.4 \
+            opencv-python-headless==4.10.0.84 \
+            Pillow==10.4.0 \
+            pyinstaller==5.13.2
+          pip list
 
       - name: Зібрати
         working-directory: photo
+        shell: bash
         run: pyinstaller --noconfirm azart.spec
 
       - name: Додати ярлик запуску
