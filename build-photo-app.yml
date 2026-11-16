@@ -1,0 +1,61 @@
+name: Зібрати AZART Фото для Windows
+
+# Збирає програму обробки фото і кладе готовий архів у Releases під сталою
+# міткою photo-latest. Посилання на нього не змінюється, тому кнопку
+# «Завантажити програму» на сторінці адміністратора налаштовувати треба лише раз.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['photo-v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+
+      - name: Встановити залежності
+        working-directory: photo
+        run: pip install numpy opencv-python-headless pillow pyinstaller
+
+      - name: Зібрати
+        working-directory: photo
+        run: pyinstaller --noconfirm azart.spec
+
+      - name: Додати ярлик запуску
+        working-directory: photo
+        shell: cmd
+        run: |
+          echo @echo off> dist\AZART\Запустити.bat
+          echo chcp 65001 ^>nul>> dist\AZART\Запустити.bat
+          echo cd /d "%%~dp0">> dist\AZART\Запустити.bat
+          echo set /p FOLDER=Перетягніть сюди папку з фото і натисніть Enter: >> dist\AZART\Запустити.bat
+          echo AZART.exe "%%FOLDER%%">> dist\AZART\Запустити.bat
+
+      - name: Запакувати
+        working-directory: photo/dist
+        shell: pwsh
+        run: Compress-Archive -Path AZART -DestinationPath ../../AZART-windows.zip -Force
+
+      - name: Покласти в Releases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view photo-latest >/dev/null 2>&1 || \
+            gh release create photo-latest \
+              --title "AZART Фото — остання збірка" \
+              --notes "Автоматична збірка для Windows. Розпакуйте архів у постійну папку і запустіть AZART.exe один раз."
+          gh release upload photo-latest AZART-windows.zip --clobber
+          echo "Посилання: $(gh repo view --json url -q .url)/releases/download/photo-latest/AZART-windows.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AZART-photo-windows
+          path: photo/dist/AZART
