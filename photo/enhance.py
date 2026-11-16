@@ -87,10 +87,25 @@ def lightness(lin):
     return 116*f-16
 
 # ------------------------------------------------------------------ обличчя і шкіра
+_YUNET_BYTES = None
+_EMPTY = np.zeros(0, np.uint8)
+
+
+def _yunet_bytes():
+    """Модель облич передаємо в OpenCV готовими байтами, а не шляхом до файлу.
+    OpenCV на Windows не відкриває файли, у шляху до яких є кирилиця
+    (наприклад C:\\Users\\Тимурчик\\...), а Python читає їх без проблем."""
+    global _YUNET_BYTES
+    if _YUNET_BYTES is None:
+        with open(YUNET, 'rb') as fh:
+            _YUNET_BYTES = np.frombuffer(fh.read(), np.uint8)
+    return _YUNET_BYTES
+
+
 def detect_faces(rgb8, long_side=1400, thr=0.70, min_px=22):
     h, w = rgb8.shape[:2]; s = long_side/max(h, w)
     sm = cv2.resize(rgb8, (max(int(w*s), 1), max(int(h*s), 1)), interpolation=cv2.INTER_AREA)
-    det = cv2.FaceDetectorYN.create(YUNET, '', (sm.shape[1], sm.shape[0]), thr, 0.3, 500)
+    det = cv2.FaceDetectorYN.create('onnx', _yunet_bytes(), _EMPTY, (sm.shape[1], sm.shape[0]), thr, 0.3, 500)
     _, f = det.detect(sm[:, :, ::-1].copy())
     faces = []
     if f is not None:
