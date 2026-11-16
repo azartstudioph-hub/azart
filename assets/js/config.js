@@ -41,6 +41,8 @@ export const CONFIG = {
   // Програма сортування фото (сторінка зі сторінки адміністратора).
   SORTER_URL: './sorter/',
 
+  PHOTO_APP_DOWNLOAD: 'https://github.com/azartstudioph@gmail.com/ВАШ_РЕПОЗИТОРІЙ/releases/download/photo-latest/AZART-windows.zip',
+
   // Скільки хвилин зберігається чернетка замовлення в браузері.
   DRAFT_TTL_MINUTES: 60,
 
