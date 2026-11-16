@@ -3,6 +3,12 @@ name: Зібрати AZART Фото для Windows
 # Збирає програму обробки фото і кладе готовий архів у Releases під сталою
 # міткою photo-latest. Посилання на нього не змінюється, тому кнопку
 # «Завантажити програму» на сторінці адміністратора налаштовувати треба лише раз.
+#
+# Чому Python 3.8, а не найновіший: програми, зібрані на Python 3.9 і вище,
+# не запускаються на Windows 7 і 8 — їм потрібна бібліотека api-ms-win-core-path,
+# якої в тих системах немає. 3.8 — остання версія, що підтримує Windows 7,
+# і зібране нею працює також на Windows 10 та 11. Версії бібліотек закріплені,
+# бо новіші вже не випускають складання для 3.8.
 
 on:
   workflow_dispatch:
@@ -18,11 +24,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: '3.12' }
+        with: { python-version: '3.8' }
 
       - name: Встановити залежності
         working-directory: photo
-        run: pip install numpy opencv-python-headless pillow pyinstaller
+        run: |
+          python -m pip install --upgrade "pip<25"
+          pip install numpy==1.24.4 opencv-python-headless==4.10.0.84 Pillow==10.4.0 pyinstaller==5.13.2
 
       - name: Зібрати
         working-directory: photo
@@ -51,7 +59,7 @@ jobs:
           gh release view photo-latest >/dev/null 2>&1 || \
             gh release create photo-latest \
               --title "AZART Фото — остання збірка" \
-              --notes "Автоматична збірка для Windows. Розпакуйте архів у постійну папку і запустіть AZART.exe один раз."
+              --notes "Автоматична збірка для Windows 7 і новіших. Розпакуйте архів у постійну папку і запустіть AZART.exe один раз."
           gh release upload photo-latest AZART-windows.zip --clobber
           echo "Посилання: $(gh repo view --json url -q .url)/releases/download/photo-latest/AZART-windows.zip"
 
