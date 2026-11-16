@@ -44,6 +44,7 @@ def st_of(f):
 
 
 def open_folder(src):
+    remember_folder(src)
     files = R.files_in(src)
     STATE.update(src=src, files=files, small={}, cast={}, analysis={}, settings={}, job=None)
     saved = load_settings(src)
@@ -224,15 +225,66 @@ class H(BaseHTTPRequestHandler):
         self._send(404, b'not found', 'text/plain')
 
 
+# ------------------------------------------------------------------ запуск із сайту
+PROTOCOL = 'azart'
+RECENT = os.path.join(os.path.expanduser('~'), '.azart-photo.json')
+
+
+def remember_folder(src):
+    try: json.dump({'last': src}, open(RECENT, 'w', encoding='utf-8'), ensure_ascii=False)
+    except Exception: pass
+
+
+def last_folder():
+    try:
+        d = json.load(open(RECENT, encoding='utf-8')).get('last')
+        return d if d and os.path.isdir(d) else None
+    except Exception:
+        return None
+
+
+def register_protocol():
+    """Дозволяє сторінці адміністратора запускати програму посиланням azart://.
+    Запис іде лише в розділ поточного користувача, права адміністратора не потрібні.
+    Виконується при кожному запуску, тому переміщення папки нічого не ламає."""
+    if os.name != 'nt' or not getattr(sys, 'frozen', False): return False
+    try:
+        import winreg
+        cmd = '"%s" "%%1"' % sys.executable
+        base = 'Software\\Classes\\' + PROTOCOL
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, base) as k:
+            winreg.SetValueEx(k, None, 0, winreg.REG_SZ, 'URL:AZART Photo')
+            winreg.SetValueEx(k, 'URL Protocol', 0, winreg.REG_SZ, '')
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, base + '\\shell\\open\\command') as k:
+            winreg.SetValueEx(k, None, 0, winreg.REG_SZ, cmd)
+        return True
+    except Exception:
+        return False
+
+
 def main():
-    src = sys.argv[1] if len(sys.argv) > 1 else os.getcwd()
+    arg = sys.argv[1] if len(sys.argv) > 1 else ''
+    from_site = arg.lower().startswith(PROTOCOL + ':')   # запуск кнопкою на сайті
     port = int(os.environ.get('AZART_PORT', '8765'))
-    R.lower_priority()
-    if os.path.isdir(src): open_folder(src)
-    srv = ThreadingHTTPServer(('127.0.0.1', port), H)
     url = 'http://127.0.0.1:%d/' % port
+    R.lower_priority()
+    register_protocol()
+
+    src = '' if from_site else arg
+    if not src: src = last_folder() or ('' if from_site else os.getcwd())
+    if src and os.path.isdir(src): open_folder(src)
+
+    try:
+        srv = ThreadingHTTPServer(('127.0.0.1', port), H)
+    except OSError:
+        # порт зайнятий — програма вже працює; просто показуємо її вікно
+        print('AZART вже запущено:', url)
+        if not from_site: webbrowser.open(url)
+        return
+
     print('AZART — обробка фото. Відкрийте в браузері:', url)
-    if not os.environ.get('AZART_NOBROWSER'):
+    # коли запуск іде з сайту, вкладку відкриває сам сайт — інакше їх було б дві
+    if not from_site and not os.environ.get('AZART_NOBROWSER'):
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     try: srv.serve_forever()
     except KeyboardInterrupt: pass
