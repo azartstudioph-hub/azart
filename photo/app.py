@@ -10,7 +10,7 @@ import numpy as np
 from PIL import Image
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import enhance as E, runner as R, imageio as IO
+import enhance as E, runner as R, azart_io as IO
 
 HERE = E.res_dir()
 SETTINGS_FILE = 'azart-settings.json'

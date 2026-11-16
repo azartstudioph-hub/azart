@@ -4,7 +4,7 @@
 import os, sys, glob, json
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np, cv2
-import enhance as E, imageio as IO
+import enhance as E, azart_io as IO
 
 EXT = ('.jpg', '.jpeg', '.JPG', '.JPEG')
 
