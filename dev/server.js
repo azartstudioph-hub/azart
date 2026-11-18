@@ -14,6 +14,7 @@ const path = require('path');
 const { createGas } = require('./gas-emulator');
 const { seed } = require('./seed');
 const drive = require('./mock-drive');
+const { createMockLiqpay } = require('./mock-liqpay');
 
 const ROOT = path.join(__dirname, '..');
 const MIME = {
@@ -22,15 +23,26 @@ const MIME = {
   '.jpg': 'image/jpeg', '.ico': 'image/x-icon', '.txt': 'text/plain; charset=utf-8', '.csv': 'text/csv; charset=utf-8'
 };
 
-function start({ port = 8080, latency = 0, withSeed = true, quiet = false, gasOptions = {} } = {}) {
-  const gas = createGas(gasOptions);
+function start({ port = 8080, latency = 0, withSeed = true, quiet = false, gasOptions = {}, payments = 'off' } = {}) {
+  const liqpay = createMockLiqpay();
+  const gas = createGas({ fetch: liqpay.fetch, ...gasOptions });
+  liqpay.attach(gas);
   const seeded = withSeed ? seed(gas) : (gas.props.ADMIN_PASSWORD = 'admin', gas.run('setup'), null);
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  // тестові ключі імітації LiqPay; режим оплати карткою — параметр payments ('off' | 'test' | 'on')
+  gas.props.LIQPAY_PUBLIC_KEY = liqpay.PUBLIC_KEY;
+  gas.props.LIQPAY_PRIVATE_KEY = liqpay.PRIVATE_KEY;
+  if (payments !== 'off' && seeded) {
+    const r = gas.post({ action: 'saveSettings', token: seeded.token, settings: { cardPayments: payments } });
+    if (!r.ok) throw new Error('payments: ' + JSON.stringify(r.error));
+  }
 
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost');
       if (latency) await sleep(latency);
+
+      if (await liqpay.handle(req, res, url)) return;
 
       if (url.pathname === '/exec') {
         if (req.method === 'POST') {
@@ -96,13 +108,15 @@ function start({ port = 8080, latency = 0, withSeed = true, quiet = false, gasOp
   return new Promise((resolve) => {
     server.listen(port, '127.0.0.1', () => {
       const actualPort = server.address().port;
+      gas.props.LIQPAY_BASE = `http://localhost:${actualPort}/__liqpay`;
+      gas.props.LIQPAY_SERVER_URL = `http://localhost:${actualPort}/exec`;
       if (!quiet) console.log(`AZART dev-сервер: http://localhost:${actualPort}  (адмін-пароль: admin)`);
-      resolve({ server, gas, port: actualPort, url: `http://localhost:${actualPort}`, seeded, close: () => new Promise((r) => server.close(r)) });
+      resolve({ server, gas, liqpay, port: actualPort, url: `http://localhost:${actualPort}`, seeded, close: () => new Promise((r) => server.close(r)) });
     });
   });
 }
 
 if (require.main === module) {
-  start({ port: Number(process.argv[2]) || 8080, latency: Number(process.env.DEV_LATENCY) || 0 });
+  start({ port: Number(process.argv[2]) || 8080, latency: Number(process.env.DEV_LATENCY) || 0, payments: process.env.DEV_PAYMENTS || 'test' });
 }
 module.exports = { start };

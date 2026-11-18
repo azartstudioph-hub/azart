@@ -32,7 +32,8 @@ function orderCard(o, admin) {
       h('span', { class: 'aord-ava', 'aria-hidden': 'true' }, initials(o.clientName)),
       h('h2', { class: 'aord-name' }, o.clientName || '—')),
     h('div', { class: 'aord-mid' },
-      h('div', { class: 'aord-sum' }, money(o.totalPrice))),
+      h('div', { class: 'aord-sum' }, money(o.totalPrice)),
+      o.paid ? h('span', { class: 'paid-badge' }, icon('checkBold', 15), h('span', null, t('pay.paid'))) : null),
     h('a', { class: 'btn btn-primary btn-block aord-open', href: buildUrl('order.html', { id: o.id }) }, t('aorders.open')));
 }
 

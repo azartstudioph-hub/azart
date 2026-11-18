@@ -102,3 +102,10 @@ export function validateTypeRanges(ranges) {
   }
   return null;
 }
+
+/** «Сад 7» → «Садочок 7» (для друку та сторінок, де садочок називається повністю). */
+export function kindergartenLabel(name) {
+  const s = String(name || '').trim();
+  if (!s) return '';
+  return s.replace(/^сад(?:ок|очок)?(?=$|[\s\d№.,])\s*/i, (m) => (m.length === s.length ? 'Садочок' : 'Садочок '));
+}

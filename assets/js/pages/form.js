@@ -11,6 +11,7 @@ import { calcOrder, formatMoney } from '../pricing.js';
 import { draftKey, loadDraft, saveDraft, clearDraft, clearSelection, removeFromSelection } from '../draft.js';
 import { createRowsEditor } from '../rows.js';
 import { openViewer } from '../viewer.js';
+import { payByCard, chooseCash } from '../payment.js';
 
 const q = params();
 const albumId = q.get('album') || '';
@@ -407,15 +408,59 @@ function start(album, prices) {
 
   function showSuccess(r) {
     const viewHref = buildUrl('order.html', { id: r.id, key: r.secret });
-    openModal({
-      title: t('form.successTitle'), size: 'md', closable: false, className: 'osuccess',
-      body: h('div', { class: 'osuccess-body' },
-        h('p', { class: 'osuccess-sum' }, t('form.successTotal', { sum: formatMoney(r.totalPrice) })),
-        h('p', { class: 'osuccess-keep muted' }, t('form.successKeep'))),
-      actions: [
-        h('a', { class: 'btn btn-ghost', href: 'index.html' }, t('form.successHome')),
-        h('a', { class: 'btn btn-primary', href: viewHref, autofocus: true }, t('form.successView'))
-      ]
+    const sum = h('p', { class: 'osuccess-sum' }, t('form.successTotal', { sum: formatMoney(r.totalPrice) }));
+    const keep = h('p', { class: 'osuccess-keep muted' }, t('form.successKeep'));
+    const homeBtn = h('a', { class: 'btn btn-ghost', href: 'index.html' }, t('form.successHome'));
+    const viewBtn = h('a', { class: 'btn btn-primary', href: viewHref, autofocus: true }, t('form.successView'));
+    const card = !!(r.payments && r.payments.card);
+    if (!card) {
+      openModal({
+        title: t('form.successTitle'), size: 'md', closable: false, className: 'osuccess',
+        body: h('div', { class: 'osuccess-body' }, sum, keep),
+        actions: [homeBtn, viewBtn]
+      });
+      return;
+    }
+
+    // вибір способу оплати: карткою зараз (сторінка LiqPay) або готівкою пізніше (без переходу)
+    const option = (cls, ic, title, sub) => h('button', { class: `paychoice ${cls}`, type: 'button' },
+      h('span', { class: 'paychoice-ic' }, icon(ic, 26)),
+      h('span', { class: 'paychoice-text' }, h('b', null, title), h('span', null, sub)));
+    const cardBtn = option('paychoice-card', 'card', t('pay.cardNow'), t('pay.cardNowSub'));
+    const cashBtn = option('paychoice-cash', 'cash', t('pay.cashLater'), t('pay.cashLaterSub'));
+    const status = h('p', { class: 'paychoice-status', role: 'status', 'aria-live': 'polite', hidden: true });
+    const choice = h('div', { class: 'paychoice-box' },
+      h('p', { class: 'paychoice-q' }, t('pay.question')),
+      h('div', { class: 'paychoice-list' }, cardBtn, cashBtn),
+      r.payments.test ? h('p', { class: 'paychoice-test' }, icon('info', 16), h('span', null, t('pay.testMode'))) : null,
+      status);
+    const body = h('div', { class: 'osuccess-body' }, sum, choice);
+    const m = openModal({ title: t('form.successTitle'), size: 'md', closable: false, className: 'osuccess osuccess-pay', body, actions: [] });
+    setTimeout(() => cardBtn.focus(), 50);
+
+    const busy = (on) => { cardBtn.disabled = on; cashBtn.disabled = on; };
+    cardBtn.addEventListener('click', async () => {
+      busy(true);
+      status.hidden = false;
+      status.className = 'paychoice-status';
+      status.replaceChildren(h('span', { class: 'spin' }), h('span', null, t('pay.redirecting')));
+      try {
+        const res = await payByCard({ id: r.id, key: r.secret });
+        if (!res.checkout) location.href = viewHref;     // уже оплачено
+      } catch (e) {
+        busy(false);
+        status.className = 'paychoice-status is-bad';
+        status.replaceChildren(h('span', null, errorText(e)));
+      }
+    });
+    cashBtn.addEventListener('click', async () => {
+      busy(true);
+      await chooseCash({ id: r.id, key: r.secret });
+      // далі — звичайне вікно «Замовлення оформлене», без сторінки оплати
+      body.replaceChildren(sum, h('p', { class: 'osuccess-cash' }, icon('cash', 18), h('span', null, t('pay.cashChosen'))), keep);
+      const actions = h('div', { class: 'modal-actions' }, homeBtn, viewBtn);
+      m.el.querySelector('.modal-body').after(actions);
+      viewBtn.focus();
     });
   }
 

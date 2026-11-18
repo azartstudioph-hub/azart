@@ -69,6 +69,10 @@ export function buildFooter() {
   viber.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3C7.6 3 4 6 4 10.5c0 2.5 1.1 4.4 2.8 5.6V21l3.1-2.2c.7.1 1.4.2 2.1.2 4.4 0 8-3 8-7.5S16.4 3 12 3z"/><path d="M9.4 8.2c-.4-.3-.9-.1-1.2.3-.5.8-.2 1.8.5 2.9 1 1.6 2.2 2.7 3.7 3.3 1 .4 1.9.2 2.5-.4.3-.4.3-.8-.1-1.1l-.9-.7c-.3-.2-.6-.1-.8.2l-.3.3c-.9-.4-1.7-1.2-2.2-2.2l.3-.3c.3-.3.4-.6.1-.9z"/><path d="M13.3 6.8c1.5.2 2.6 1.3 2.8 2.8M13.2 8.7c.7.1 1.2.6 1.3 1.3"/></svg>';
   const tg = h('a', { class: 'social social-tg', href: c.telegram, target: '_blank', rel: 'noopener', 'aria-label': 'Telegram', title: 'Telegram' });
   tg.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="currentColor"/><path d="M5.5 11.8l11.3-4.4c.5-.2 1 .1.8.9l-1.9 9c-.1.6-.5.8-1 .5l-2.8-2.1-1.4 1.3c-.2.2-.3.3-.6.3l.2-2.9 5.2-4.7c.2-.2 0-.3-.3-.1l-6.5 4.1-2.8-.9c-.6-.2-.6-.6.1-.9z" fill="var(--bg)"/></svg>';
+  const legal = h('nav', { class: 'footer-legal', 'aria-label': t('legal.nav') },
+    [['oferta.html', 'footer.oferta'], ['payment.html', 'footer.payment'], ['returns.html', 'footer.returns'],
+      ['privacy.html', 'footer.privacy'], ['contacts.html', 'footer.contactsPage']]
+      .map(([href, key]) => h('a', { href }, t(key))));
   return h('footer', { class: 'site-footer' },
     h('div', { class: 'site-footer-inner' },
       h('div', { class: 'footer-copy' }, `© ${new Date().getFullYear()} AZART`),
@@ -76,7 +80,8 @@ export function buildFooter() {
       h('div', { class: 'footer-contacts' },
         h('span', { class: 'footer-contacts-label' }, t('footer.contacts')),
         h('a', { class: 'footer-phone', href: 'tel:' + c.phone }, c.phoneLabel),
-        viber, tg)));
+        viber, tg)),
+    legal);
 }
 
 /**

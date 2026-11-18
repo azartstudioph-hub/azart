@@ -121,29 +121,43 @@ function apiSavePrices_(req) {
 }
 
 function apiGetSettings_() {
-  return { settings: getSettings_() };
+  return { settings: getSettings_(), liqpay: { keys: liqpayKeysSet_() } };
 }
 
 function apiSaveSettings_(req) {
   var input = req.settings || {};
   var allowed = {
     publicNameMode: ['full', 'short'],
-    acceptAfterDeadline: ['yes', 'no']
+    acceptAfterDeadline: ['yes', 'no'],
+    cardPayments: ['off', 'test', 'on']
   };
   return withLock_(function () {
     var rows = readAll_(SHEETS.SETTINGS);
     var byKey = {};
     rows.forEach(function (r) { byKey[r.key] = r; });
     var add = [];
+    var put = function (k, v) {
+      if (byKey[k]) { byKey[k].value = v; writeRow_(SHEETS.SETTINGS, byKey[k]); }
+      else add.push({ key: k, value: v });
+    };
     Object.keys(allowed).forEach(function (k) {
       if (!Object.prototype.hasOwnProperty.call(input, k)) return;
       var v = String(input[k]);
       if (allowed[k].indexOf(v) < 0) fail_('BAD_REQUEST', 'Некоректне значення: ' + k);
-      if (byKey[k]) { byKey[k].value = v; writeRow_(SHEETS.SETTINGS, byKey[k]); }
-      else add.push({ key: k, value: v });
+      if (k === 'cardPayments' && v !== 'off' && !liqpayKeysSet_()) {
+        fail_('NOT_CONFIGURED', 'Спершу додайте ключі LiqPay у Script properties (LIQPAY_PUBLIC_KEY, LIQPAY_PRIVATE_KEY).');
+      }
+      put(k, v);
+    });
+    Object.keys(SETTINGS_TEXT).forEach(function (k) {
+      if (!Object.prototype.hasOwnProperty.call(input, k)) return;
+      var v = str_(input[k], SETTINGS_TEXT[k]).replace(/\s+/g, ' ').trim();
+      if (k === 'deliveryDays' && v && !/^\d{1,3}$/.test(v)) fail_('BAD_REQUEST', 'Кількість днів має бути числом');
+      if (k === 'fopEmail' && v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) fail_('BAD_REQUEST', 'Некоректна електронна адреса');
+      put(k, v);
     });
     if (add.length) appendRows_(SHEETS.SETTINGS, add);
-    return { settings: getSettings_() };
+    return { settings: getSettings_(), liqpay: { keys: liqpayKeysSet_() } };
   });
 }
 
@@ -190,7 +204,7 @@ function apiListOrdersFull_(req) {
     (byOrder[i.orderId] = byOrder[i.orderId] || []).push(i);
   });
   var out = sortByCreatedDesc_(orders).map(function (o) {
-    var s = orderSummary_(o, 'full');
+    var s = withPaid_(orderSummary_(o, 'full'), o);
     s.phone = o.phone;
     s.comment = o.comment;
     s.items = (byOrder[o.id] || []).sort(function (a, b) { return a.position - b.position; }).map(itemOut_);

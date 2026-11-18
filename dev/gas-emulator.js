@@ -152,7 +152,9 @@ function createGas(opts = {}) {
       const bytes = typeof data === 'string' ? toSigned(Buffer.from(data)) : data;
       return { getBytes: () => bytes, getDataAsString: () => toBuf(bytes).toString('utf8'), getContentType: () => mime, getName: () => name };
     },
-    Charset: { UTF_8: 'UTF_8' }
+    Charset: { UTF_8: 'UTF_8' },
+    DigestAlgorithm: { SHA_1: 'sha1', SHA_256: 'sha256', MD5: 'md5' },
+    computeDigest: (alg, v) => toSigned(crypto.createHash(alg).update(toBuf(v)).digest())
   };
 
   const store = (map) => ({
@@ -202,12 +204,19 @@ function createGas(opts = {}) {
       getFolderById: (id) => { const f = driveFiles.get(id); if (!f || !f.createFile) throw new Error('No folder ' + id); return f; },
       getFileById: (id) => { const f = driveFiles.get(id); if (!f) throw new Error('No file ' + id); return f; }
     },
+    ScriptApp: { getService: () => ({ getUrl: () => opts.serviceUrl || 'https://script.google.com/macros/s/DEV/exec' }) },
     UrlFetchApp: { fetch: (url, o) => (opts.fetch ? opts.fetch(url, o) : (() => { throw new Error('UrlFetchApp not stubbed: ' + url); })()) }
   };
   const ctx = vm.createContext(sandbox);
 
   const files = fs.readdirSync(dir).filter((f) => f.endsWith('.gs')).sort();
   files.forEach((f) => vm.runInContext(fs.readFileSync(path.join(dir, f), 'utf8'), ctx, { filename: f }));
+
+  /** Запит у форматі форми (як надсилає LiqPay): { data, signature }. Повертає текст відповіді. */
+  function postForm(fields) {
+    const contents = Object.entries(fields).map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');
+    return ctx.doPost({ postData: { contents, type: 'application/x-www-form-urlencoded' }, parameter: { ...fields } }).getContent();
+  }
 
   function post(body) {
     const raw = typeof body === 'string' ? body : JSON.stringify(body);
@@ -216,7 +225,7 @@ function createGas(opts = {}) {
   }
 
   return {
-    ctx, props, logs, clock, spreadsheets, driveFiles, post, stats,
+    ctx, props, logs, clock, spreadsheets, driveFiles, post, postForm, stats,
     get ss() { return activeSs; },
     advance: (ms) => { clock.t += ms; },
     run: (name, ...args) => ctx[name](...args),

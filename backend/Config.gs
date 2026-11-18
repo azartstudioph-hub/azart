@@ -74,7 +74,9 @@ SCHEMAS[SHEETS.ORDERS] = [
   ['id', 's'], ['secret', 's'], ['albumId', 's'],
   ['clientName', 's'], ['phone', 's'], ['comment', 's'], ['status', 's'],
   ['groupFolderId', 's'], ['groupName', 's'], ['createdAt', 's'],
-  ['totalPrice', 'n'], ['totalPhotos', 'n'], ['isFullSession', 'b']
+  ['totalPrice', 'n'], ['totalPhotos', 'n'], ['isFullSession', 'b'],
+  // оплата: payMethod — 'card' | 'cash' | '' (не обрано); payStatus — 'paid' | 'refunded' | ''
+  ['payMethod', 's'], ['payStatus', 's'], ['paidAt', 's'], ['payRef', 's'], ['payId', 's'], ['payAmount', 'n']
 ];
 SCHEMAS[SHEETS.ITEMS] = [
   ['id', 's'], ['orderId', 's'],
@@ -107,8 +109,17 @@ var SETTINGS_DEFAULTS = {
   // full - показувати ім'я як є; short - "Прізвище І." у публічному списку
   publicNameMode: 'full',
   // yes - сервер приймає замовлення і після кінцевої дати бланка (за замовчуванням - ні)
-  acceptAfterDeadline: 'no'
+  acceptAfterDeadline: 'no',
+  // оплата карткою через LiqPay: off - вимкнено; test - тестовий режим (гроші не списуються); on - справжні оплати
+  cardPayments: 'off',
+  // дані для сторінок «Публічна оферта», «Контакти» тощо
+  fopName: '', fopTaxId: '', fopAddress: '', fopEmail: '',
+  // за скільки робочих днів після закриття бланка готові друковані фото
+  deliveryDays: '14'
 };
+
+/** Текстові налаштування: найбільша довжина. */
+var SETTINGS_TEXT = { fopName: 120, fopTaxId: 20, fopAddress: 200, fopEmail: 100, deliveryDays: 3 };
 
 // ---------------------------------------------------------------
 // Властивості скрипту (Project Settings → Script properties)
@@ -118,7 +129,14 @@ var PROPS = {
   ADMIN_PASSWORD: 'ADMIN_PASSWORD',        // пароль адміністратора (ОБОВ'ЯЗКОВО)
   TOKEN_SECRET: 'TOKEN_SECRET',            // створюється автоматично
   SHEET_ID: 'SHEET_ID',                    // якщо скрипт не прив'язаний до таблиці
-  GROUP_PHOTOS_FOLDER_ID: 'GROUP_PHOTOS_FOLDER_ID'
+  GROUP_PHOTOS_FOLDER_ID: 'GROUP_PHOTOS_FOLDER_ID',
+  // Ключі LiqPay (кабінет LiqPay → магазин → «API»). Лише тут, ніколи в коді сайту.
+  LIQPAY_PUBLIC_KEY: 'LIQPAY_PUBLIC_KEY',
+  LIQPAY_PRIVATE_KEY: 'LIQPAY_PRIVATE_KEY',
+  // Необов'язково: адреса /exec для повідомлень LiqPay, якщо автоматична не підходить
+  LIQPAY_SERVER_URL: 'LIQPAY_SERVER_URL',
+  // Лише для локальної розробки: адреса імітації LiqPay замість https://www.liqpay.ua
+  LIQPAY_BASE: 'LIQPAY_BASE'
 };
 
 function prop_(name) {

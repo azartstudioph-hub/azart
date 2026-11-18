@@ -5,7 +5,7 @@ import { t, tv } from '../i18n.js';
 import { h, icon, params, buildUrl, fmtDateShort, $ } from '../util.js';
 import { api, isAdminLoggedIn } from '../api.js';
 import { loadInto } from '../ui.js';
-import { sizeLabel } from '../domain.js';
+import { sizeLabel, kindergartenLabel } from '../domain.js';
 import { formatMoney } from '../pricing.js';
 
 mountLayout({ active: 'orders' });
@@ -39,7 +39,8 @@ function sheet(album, orders, showComments) {
     const parity = idx % 2 === 0 ? 'is-even' : 'is-odd';
     const comment = showComments ? String(o.comment || '').trim() : '';
     const lead = [merge('prt-name', o.clientName), merge('prt-date', fmtDateShort(o.createdAt))];
-    const sum = merge('prt-sum', money(o.totalPrice));
+    // «Оплачено» під сумою — лише для оплачених карткою; готівка нічим не позначається
+    const sum = merge('prt-sum', [h('div', null, money(o.totalPrice)), o.paid ? h('div', { class: 'prt-paid' }, t('pay.paid')) : null]);
     const blank = [merge('', null), merge('', null)];
     const blankSum = merge('', null);
     if (!o.items.length) {
@@ -61,10 +62,12 @@ function sheet(album, orders, showComments) {
     }
   });
 
-  const title = [album.title, groupName].filter(Boolean).join(' · ');
   return h('div', { class: 'prt-paper' },
     h('div', { class: 'prt-meta' },
-      h('h1', { class: 'prt-title' }, title),
+      // садочок · свято · група — одним великим рядком
+      h('h1', { class: 'prt-title' },
+        album.kindergarten ? [h('span', { class: 'prt-kg' }, kindergartenLabel(album.kindergarten)), ' · '] : null,
+        h('span', { class: 'prt-what' }, [album.title, groupName].filter(Boolean).join(' · '))),
       h('div', { class: 'prt-total' }, t('print.total') + ' ', h('span', null, money(grand)))),
     h('table', { class: 'prt-table' }, h('thead', null, head), h('tbody', null, rows)));
 }

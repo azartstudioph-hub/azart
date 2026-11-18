@@ -15,6 +15,12 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  // повідомлення від LiqPay приходять формою (data + signature), а не JSON
+  var form = formFields_(e);
+  if (form.data && form.signature) {
+    try { return liqpayCallback_(form.data, form.signature); }
+    catch (err) { console.error('LiqPay callback: ' + (err && err.stack ? err.stack : err)); return ContentService.createTextOutput('error'); }
+  }
   try {
     var raw = (e && e.postData && e.postData.contents) || '';
     if (!raw) fail_('BAD_REQUEST', 'Порожній запит');
@@ -24,7 +30,8 @@ function doPost(e) {
     if (!req || typeof req !== 'object') fail_('BAD_REQUEST', 'Некоректний запит');
 
     var action = String(req.action || '');
-    var route = Object.prototype.hasOwnProperty.call(ROUTES_, action) ? ROUTES_[action] : null;
+    var routes = routes_();
+    var route = Object.prototype.hasOwnProperty.call(routes, action) ? routes[action] : null;
     if (!route) fail_('BAD_REQUEST', 'Невідома дія: ' + action.slice(0, 40));
 
     if (route.admin && !isAdmin_(req.token)) fail_('UNAUTHORIZED', 'Потрібен вхід адміністратора');
@@ -43,7 +50,9 @@ function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 
-var ROUTES_ = {
+// Таблицю маршрутів будуємо під час запиту, а не під час завантаження файлу:
+// так не важливо, у якому порядку файли .gs стоять у проєкті Apps Script.
+function routes_() { return {
   // публічні
   ping:             { fn: apiPing_ },
   whoami:           { fn: apiWhoami_ },
@@ -56,6 +65,9 @@ var ROUTES_ = {
   listOrders:       { fn: apiListOrders_ },
   getOrder:         { fn: apiGetOrder_ },
   createOrder:      { fn: apiCreateOrder_ },
+  siteInfo:         { fn: apiSiteInfo_ },
+  choosePayment:    { fn: apiChoosePayment_ },
+  checkPayment:     { fn: apiCheckPayment_ },
   // адміністратор
   adminOverview:    { fn: apiAdminOverview_, admin: true },
   saveAlbum:        { fn: apiSaveAlbum_, admin: true },
@@ -70,7 +82,7 @@ var ROUTES_ = {
   migrateWixPhotos: { fn: apiMigrateWixPhotos_, admin: true },
   getSettings:      { fn: apiGetSettings_, admin: true },
   saveSettings:     { fn: apiSaveSettings_, admin: true }
-};
+}; }
 
 // ---------------------------------------------------------------
 // Авторизація
@@ -262,6 +274,12 @@ function orderSummary_(o, nameMode) {
   };
 }
 
+/** Позначка «Оплачено» (картою). Показуємо лише адміністратору та власнику замовлення. */
+function withPaid_(summary, o) {
+  summary.paid = o.payStatus === 'paid';
+  return summary;
+}
+
 function itemOut_(i) {
   return {
     photoNumber: i.photoNumber, photoType: i.photoType, photoSize: i.photoSize,
@@ -276,6 +294,15 @@ function sortByCreatedDesc_(arr) {
 // ---------------------------------------------------------------
 // Публічні дії (читання)
 // ---------------------------------------------------------------
+
+/** Публічні дані для сторінок «Оферта», «Контакти» тощо та чи працює оплата карткою. */
+function apiSiteInfo_() {
+  var st = getSettings_();
+  return {
+    business: { name: st.fopName, taxId: st.fopTaxId, address: st.fopAddress, email: st.fopEmail, deliveryDays: st.deliveryDays },
+    payments: paymentsInfo_(null)
+  };
+}
 
 function apiGetPrices_() {
   return { prices: getPrices_() };
@@ -322,7 +349,10 @@ function apiListOrders_(req) {
   var list = readAll_(SHEETS.ORDERS).filter(function (o) {
     return o.albumId === albumId && (groupId === null || o.groupFolderId === groupId);
   });
-  list = sortByCreatedDesc_(list).map(function (o) { return orderSummary_(o, admin ? 'full' : mode); });
+  list = sortByCreatedDesc_(list).map(function (o) {
+    var s = orderSummary_(o, admin ? 'full' : mode);
+    return admin ? withPaid_(s, o) : s;
+  });
   return { orders: list, admin: admin };
 }
 
@@ -350,6 +380,11 @@ function apiGetOrder_(req) {
   summary.items = items;
   summary.canSeeAll = full;
   summary.admin = admin;
+  if (full) {
+    withPaid_(summary, order);
+    summary.payMethod = order.payMethod || '';
+    summary.payments = paymentsInfo_(order);
+  }
   return {
     order: summary,
     album: album ? { id: album.id, title: album.title, kindergarten: album.kindergarten, isPortrait: isPortraitAlbum_(album) } : null
@@ -458,7 +493,8 @@ function apiCreateOrder_(req) {
     var result = {
       id: id, secret: secret, totalPrice: calc.total, totalPhotos: calc.totalPhotos,
       status: AZART.STATUSES[0], createdAt: createdAt, gift: calc.gift, percent: calc.percent,
-      fullSession: calc.fullSession
+      fullSession: calc.fullSession,
+      payments: paymentsInfo_({ totalPrice: calc.total })
     };
     if (reqId) cache.put('rq:' + reqId, JSON.stringify(result), AZART.IDEMPOTENCY_TTL_SEC);
     return result;

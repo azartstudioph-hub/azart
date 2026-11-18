@@ -11,12 +11,14 @@ import { sizeLabel } from '../domain.js';
 import { confirmDialog, toast } from '../modal.js';
 import { getPhotos, thumbUrl, fallbackThumbUrl } from '../drive.js';
 import { openViewer } from '../viewer.js';
+import { payByCard } from '../payment.js';
 
 mountLayout({ active: 'orders' });
 
 const q = params();
 const orderId = q.get('id') || '';
 const key = q.get('key') || '';
+const backFromPay = q.get('pay') === '1';
 
 const money = (n) => `${formatMoney(n)} ${t('common.currency')}`;
 
@@ -146,10 +148,67 @@ function sideCard(order, admin, canSeeAll) {
     h('div', { class: 'ord-total' },
       h('span', null, t('order.total')),
       h('b', null, money(order.totalPrice))),
+    payBlock(order),
     order.isFullSession ? h('div', { class: 'ord-session' }, icon('camera', 18), h('span', null, t('order.fullSession'))) : null,
     h('div', { class: 'ord-label ord-label-comment' }, t('order.comment')),
     h('div', { class: 'ord-comment' + (comment ? '' : ' is-empty') }, commentText),
     !canSeeAll ? h('p', { class: 'ord-privacy' }, icon('lock', 15), h('span', null, t('order.privacy'))) : null);
+}
+
+/** «Оплачено» або кнопка «Оплатити карткою» (власнику, якщо оплата карткою увімкнена). */
+function payBlock(order) {
+  const box = h('div', { class: 'ord-pay' });
+  const paint = () => {
+    if (order.paid) {
+      box.replaceChildren(h('div', { class: 'paid-badge paid-badge-lg' }, icon('checkBold', 18), h('span', null, t('pay.paid'))));
+      return;
+    }
+    if (!(order.payments && order.payments.card) || !key) { box.replaceChildren(); return; }
+    const btn = h('button', { class: 'btn btn-primary btn-block ord-pay-btn', type: 'button' }, icon('card', 20), h('span', null, t('pay.payCard')));
+    const err = h('p', { class: 'ord-pay-err', role: 'alert', hidden: true });
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.replaceChildren(h('span', { class: 'spin' }), h('span', null, t('pay.redirecting')));
+      try {
+        const r = await payByCard({ id: order.id, key });
+        if (!r.checkout) { order.paid = !!r.paid; paint(); }
+      } catch (e) {
+        btn.disabled = false;
+        btn.replaceChildren(icon('card', 20), h('span', null, t('pay.payCard')));
+        err.textContent = errorText(e);
+        err.hidden = false;
+      }
+    });
+    box.replaceChildren(btn,
+      order.payments.test ? h('p', { class: 'ord-pay-note' }, t('pay.testMode')) : null,
+      err);
+  };
+  paint();
+  box.repaint = paint;
+  return box;
+}
+
+/** Після повернення зі сторінки LiqPay: сервер перевіряє оплату; поки банк обробляє — ще кілька спроб. */
+async function checkAfterReturn(order, note, block) {
+  const show = (kind, text) => { note.className = 'note ord-pay-result ' + kind; note.replaceChildren(icon(kind === 'note-ok' ? 'checkBold' : 'info', 20), h('div', null, text)); note.hidden = false; };
+  show('note-info', t('pay.checking'));
+  let last = '';
+  for (let i = 0; i < 6; i++) {
+    try {
+      const r = await api('checkPayment', { id: order.id, key }, { retries: 0 });
+      last = r.liqpayStatus || '';
+      if (r.paid) {
+        order.paid = true;
+        order.payments = r.payments;
+        block.repaint();
+        show('note-ok', t('pay.success'));
+        return;
+      }
+      if (/^(failure|error|reversed)$/.test(last)) break;
+    } catch (e) { last = ''; }
+    await new Promise((res) => setTimeout(res, 2500));
+  }
+  show('note-warn', /^(failure|error)$/.test(last) ? t('pay.failed') : t('pay.pending'));
 }
 
 async function load() {
@@ -168,7 +227,11 @@ loadInto(box, load, ({ order, album }) => {
   }
 
   const tbl = table(order);
-  box.append(h('div', { class: 'ord-grid' }, tbl.node, sideCard(order, admin, order.canSeeAll)));
+  const side = sideCard(order, admin, order.canSeeAll);
+  const payNote = h('div', { class: 'note ord-pay-result', role: 'status', 'aria-live': 'polite', hidden: true });
+  box.append(payNote, h('div', { class: 'ord-grid' }, tbl.node, side));
+  if (backFromPay && key && !order.paid) checkAfterReturn(order, payNote, side.querySelector('.ord-pay'));
+  else if (backFromPay && order.paid) { payNote.className = 'note ord-pay-result note-ok'; payNote.replaceChildren(icon('checkBold', 20), h('div', null, t('pay.success'))); payNote.hidden = false; }
   fillThumbs(order, album, tbl.thumbs);
 
   if (admin) {
