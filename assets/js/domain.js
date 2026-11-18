@@ -43,6 +43,16 @@ export function compareGroups(a, b) {
   return String(a || '').localeCompare(String(b || ''), 'uk', { numeric: true, sensitivity: 'base' });
 }
 
+/** Номер фото з назви файлу: перше число (IMG_0001.JPG → 1). Тим самим правилом
+ *  сторінка замовлення визначає тип фото за діапазонами, тож воно має бути одне. */
+export function photoNumber(name) {
+  const m = String(name || '').match(/(\d+)/);
+  return m ? Number(m[1]) : null;
+}
+
+/** Скільки діапазонів зберігає сервер (backend/Config.gs → LIMITS.maxRanges). */
+export const MAX_RANGES = 100;
+
 export function isPortraitAlbum(album) {
   return !!album && Array.isArray(album.types) && album.types.length === 1 && album.types[0] === TYPE_PORTRAIT;
 }
@@ -70,6 +80,8 @@ export function parseDriveFolderId(input) {
 export function validateTypeRanges(ranges) {
   const filled = (ranges || []).filter((r) => r.from !== null && r.from !== undefined || r.to !== null && r.to !== undefined || r.type);
   if (!filled.length) return null;
+  // сервер мовчки відкинув би все понад ліміт — краще сказати одразу
+  if (filled.length > MAX_RANGES) return { key: 'ranges.errTooMany', vars: { n: filled.length, max: MAX_RANGES } };
   for (const r of filled) {
     if (r.from === null || r.from === undefined || r.to === null || r.to === undefined || !r.type) return { key: 'ranges.errFill', vars: {} };
     if (r.from > r.to) return { key: 'ranges.errOrder', vars: { from: r.from, to: r.to } };

@@ -1,12 +1,13 @@
 // Створення / редагування бланка (порт HTML-компонента Wix «Створити бланк»).
 // Два екрани: основний (типи, розміри, формати, бонус, садок, назва, посилання на Drive, дата) та діапазони фото.
 import { h, icon, uid } from '../util.js';
-import { t, tv } from '../i18n.js';
+import { t, tv, plural } from '../i18n.js';
 import { api, errorText, ApiError } from '../api.js';
 import { openModal } from '../modal.js';
 import { CONFIG } from '../config.js';
-import { TYPES, SIZES, FORMATS, TYPE_PORTRAIT, parseDriveFolderId, validateTypeRanges } from '../domain.js';
+import { TYPES, SIZES, FORMATS, TYPE_PORTRAIT, parseDriveFolderId, validateTypeRanges, compareGroups } from '../domain.js';
 import { getGroups, getPhotos } from '../drive.js';
+import { scanFolderPaths, rangesFromScan, typesAfterScan, mergeRanges } from '../folder-ranges.js';
 import { formatMoney } from '../pricing.js';
 
 /** Текст помилки діапазонів (validateTypeRanges повертає { key, vars }). */
@@ -14,6 +15,34 @@ export function rangeErrorText(err) {
   const vars = { ...err.vars };
   if (vars.whereKey) vars.where = t(vars.whereKey, { group: vars.group });
   return t(err.key, vars);
+}
+
+/** Не більше стількох файлів читаємо з перетягнутої папки — на випадок, якщо перетягнули цілий диск. */
+const SCAN_LIMIT = 30000;
+
+/**
+ * Шляхи всіх файлів у перетягнутих папках, відносно них самих («Свято/Група 6/Фон/IMG_1.JPG»).
+ * Читаються лише назви: вміст файлів не відкривається і нікуди не передається.
+ */
+async function pathsFromEntries(entries) {
+  const out = [];
+  const readAll = (reader) => new Promise((resolve, reject) => {
+    const acc = [];
+    // readEntries віддає вміст папки частинами (у Chrome — по 100), тож читаємо до порожньої
+    const next = () => reader.readEntries((batch) => {
+      if (!batch.length) resolve(acc); else { acc.push(...batch); next(); }
+    }, reject);
+    next();
+  });
+  async function walk(entry, prefix) {
+    if (out.length >= SCAN_LIMIT) return;
+    if (entry.isFile) { out.push(prefix + entry.name); return; }
+    if (!entry.isDirectory) return;
+    const kids = await readAll(entry.createReader());
+    for (const k of kids) await walk(k, prefix + entry.name + '/');
+  }
+  for (const e of entries) await walk(e, '');
+  return out;
 }
 
 function checkGroup(title, name, values, selected, labelOf, hint) {
@@ -131,6 +160,7 @@ export function openBlankModal({ album = null, prices = {} } = {}) {
     const rangesList = h('div', { class: 'bm-ranges' });
     const rangesErr = h('div', { class: 'field-error bm-err', hidden: true, role: 'alert' });
     let backup = [];
+    let backupTypes = [];
 
     function renderRanges() {
       rangesList.replaceChildren(...state.ranges.map((r) => {
@@ -159,8 +189,133 @@ export function openBlankModal({ album = null, prices = {} } = {}) {
     const addRangeBtn = h('button', { class: 'btn btn-outline', type: 'button' }, t('ranges.add'));
     const saveRangesBtn = h('button', { class: 'btn btn-outline', type: 'button' }, t('ranges.save'));
     const cancelRangesBtn = h('button', { class: 'btn btn-outline-danger', type: 'button' }, t('common.cancel'));
+    // ---------- діапазони з папки на комп'ютері ----------
+    // Адміністратор перетягує папку свята з Провідника: групи → підпапки «Репортаж», «Фон», «Портрет».
+    // Сайт читає лише назви файлів і сам складає діапазони; фото нікуди не завантажуються.
+    const scanInput = h('input', { type: 'file', webkitdirectory: true, multiple: true, class: 'bm-scan-input', tabindex: '-1', 'aria-hidden': 'true' });
+    const scanPick = h('button', { class: 'btn btn-outline btn-sm', type: 'button' }, icon('folder', 16), h('span', null, t('ranges.scanPick')));
+    const scanStatus = h('div', { class: 'bm-scan-status', role: 'status', 'aria-live': 'polite', hidden: true });
+    const scanReport = h('ul', { class: 'bm-scan-report', hidden: true });
+    const scanZone = h('div', { class: 'bm-scan' },
+      h('div', { class: 'bm-scan-head' }, icon('folder', 20), h('strong', null, t('ranges.scanTitle'))),
+      h('p', { class: 'bm-scan-text' }, t('ranges.scanDrop')),
+      h('div', { class: 'bm-scan-row' }, scanPick, h('span', { class: 'bm-scan-note' }, t('ranges.scanNote'))),
+      scanInput, scanStatus, scanReport);
+
+    function setScanStatus(text, kind = '') {
+      scanStatus.hidden = !text;
+      scanStatus.className = 'bm-scan-status' + (kind ? ' is-' + kind : '');
+      scanStatus.textContent = text || '';
+    }
+
+    /** Типи бланка змінюємо так само, як це зробили б галочки. */
+    function setTypes(list) {
+      state.types = [...list];
+      prevTypes = [...list];
+      typeCol.querySelectorAll('input').forEach((b) => { b.checked = list.includes(b.value); });
+      state.ranges.forEach((r) => { if (r.type && !list.includes(r.type)) r.type = ''; });
+    }
+
+    let scanning = false;
+    async function applyScan(paths) {
+      if (scanning) return;
+      scanning = true;
+      scanPick.disabled = true;
+      scanReport.hidden = true;
+      setScanStatus(t('ranges.scanning'));
+      try {
+        // назви груп беремо з Google Drive, щоб вони збіглися з тими, що бачать батьки
+        let driveGroups = null;
+        let driveNote = '';
+        const folderId = parseDriveFolderId(driveInput.value);
+        if (folderId) {
+          try { driveGroups = (await getGroups(folderId)).map((g) => g.name); }
+          catch (e) { driveNote = t('ranges.scanDriveFail'); }
+        } else driveNote = t('ranges.scanNoDrive');
+
+        const scan = scanFolderPaths(paths, { driveGroups });
+        if (!scan.groups.length || !scan.groups.some((g) => g.items.length)) {
+          setScanStatus(t('ranges.scanEmpty'), 'bad');
+          return;
+        }
+        const tt = typesAfterScan(state.types, scan.foundTypes);
+        setTypes(tt.types);
+        const { ranges, perGroup } = rangesFromScan(scan, state.types);
+        state.ranges = mergeRanges(state.ranges, ranges.map((r) => ({ _id: uid(), ...r })), scan.groups.map((g) => g.name))
+          .sort((a, b) => compareGroups(a.group, b.group) || (a.from || 0) - (b.from || 0));
+        if (!state.ranges.length) state.ranges.push(newRange());
+        rangesErr.hidden = true;
+        renderRanges();
+        paintRangesBtn();
+
+        // звіт: що знайдено і на що звернути увагу
+        const li = (text, warn) => h('li', { class: warn ? 'is-warn' : '' }, text);
+        const items = [];
+        if (tt.switchedToPortrait) items.push(li(t('ranges.scanPortraitOnly'), true));
+        tt.enabled.forEach((tp) => items.push(li(t('ranges.scanTypeOn', { type: tv(tp) }), true)));
+        if (driveNote) items.push(li(driveNote, true));
+        let photos = 0;
+        for (const g of perGroup) {
+          const counts = TYPES.filter((tp) => g.counts[tp]).map((tp) => `${tv(tp)} ${g.counts[tp]}`).join(', ');
+          photos += Object.values(g.counts).reduce((a, b) => a + b, 0);
+          const sub = [];
+          if (g.matched === false) sub.push(t('ranges.scanUnmatched'));
+          if (g.unsorted) sub.push(t('ranges.scanUnsorted', { n: g.unsorted }));
+          if (g.noNumber) sub.push(t('ranges.scanNoNumber', { n: g.noNumber }));
+          if (g.conflicts.length) sub.push(t('ranges.scanConflicts', { list: g.conflicts.slice(0, 12).join(', ') + (g.conflicts.length > 12 ? '…' : '') }));
+          Object.entries(g.skipped).forEach(([tp, n]) => sub.push(t('ranges.scanSkipped', { type: tv(tp), n })));
+          items.push(h('li', { class: sub.length ? 'is-warn' : '' },
+            h('b', null, g.name || t('ranges.scanNoGroup')), ': ',
+            counts || '—', ' → ', plural('ranges.n', g.ranges),
+            sub.length ? h('span', { class: 'bm-scan-sub' }, sub.join('; ')) : null));
+        }
+        scanReport.replaceChildren(...items);
+        scanReport.hidden = false;
+        const err = validateTypeRanges(state.ranges);
+        if (err && err.key === 'ranges.errTooMany') setScanStatus(rangeErrorText(err), 'bad');
+        else setScanStatus(t('ranges.scanDone', { n: photos, ranges: plural('ranges.n', ranges.length) }), 'ok');
+      } finally {
+        scanning = false;
+        scanPick.disabled = false;
+      }
+    }
+
+    scanPick.addEventListener('click', () => scanInput.click());
+    scanInput.addEventListener('change', () => {
+      const list = [...(scanInput.files || [])].map((f) => f.webkitRelativePath || f.name);
+      scanInput.value = '';
+      if (list.length) applyScan(list);
+    });
+    // приймаємо папку будь-де на екрані діапазонів: інакше браузер, промахнувшись повз рамку,
+    // відкрив би перетягнуте фото замість сайту і незбережений бланк пропав би
+    rangesScreen.addEventListener('dragover', (e) => {
+      if (![...(e.dataTransfer && e.dataTransfer.types || [])].includes('Files')) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      scanZone.classList.add('is-over');
+    });
+    rangesScreen.addEventListener('dragleave', (e) => {
+      if (!rangesScreen.contains(e.relatedTarget)) scanZone.classList.remove('is-over');
+    });
+    rangesScreen.addEventListener('drop', async (e) => {
+      if (![...(e.dataTransfer && e.dataTransfer.types || [])].includes('Files')) return;
+      e.preventDefault();
+      scanZone.classList.remove('is-over');
+      // записи треба взяти до першого await: після нього браузер їх уже не віддає
+      const entries = [...(e.dataTransfer.items || [])]
+        .map((it) => (it.kind === 'file' && it.webkitGetAsEntry ? it.webkitGetAsEntry() : null))
+        .filter(Boolean);
+      if (!entries.some((x) => x.isDirectory)) { setScanStatus(t('ranges.scanNotFolder'), 'bad'); return; }
+      setScanStatus(t('ranges.scanning'));
+      let paths;
+      try { paths = await pathsFromEntries(entries); }
+      catch (err) { setScanStatus(t('ranges.scanReadFail'), 'bad'); return; }
+      applyScan(paths);
+    });
+
     rangesScreen.append(
       h('div', { class: 'bm-ranges-top' }, addRangeBtn, h('div', { class: 'bm-ranges-actions' }, saveRangesBtn, cancelRangesBtn)),
+      scanZone,
       h('p', { class: 'bm-hint' }, t('ranges.hint')),
       rangesErr, rangesList);
 
@@ -175,8 +330,11 @@ export function openBlankModal({ album = null, prices = {} } = {}) {
       if (!state.types.length) { showError(submitErr, t('blank.errTypesFirst')); return; }
       submitErr.hidden = true;
       backup = state.ranges.map((r) => ({ ...r }));
+      backupTypes = [...state.types];
       if (!state.ranges.length) state.ranges.push(newRange());
       rangesErr.hidden = true;
+      setScanStatus('');
+      scanReport.hidden = true;
       renderRanges();
       showScreen('ranges');
     });
@@ -189,7 +347,13 @@ export function openBlankModal({ album = null, prices = {} } = {}) {
       paintRangesBtn();
       showScreen('main');
     });
-    cancelRangesBtn.addEventListener('click', () => { state.ranges = backup; paintRangesBtn(); showScreen('main'); });
+    cancelRangesBtn.addEventListener('click', () => {
+      // «Скасувати» повертає і діапазони, і типи, якщо їх увімкнула папка
+      setTypes(backupTypes);
+      state.ranges = backup;
+      paintRangesBtn();
+      showScreen('main');
+    });
 
     function showError(el, text) { el.textContent = text; el.hidden = false; }
 

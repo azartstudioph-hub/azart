@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { startApp, launchBrowser, newPage } from './helpers.mjs';
 
 let app, browser;
@@ -162,6 +165,122 @@ test('створення бланка: перевірки, «Портрет» в
   assert.match(await page.locator('.bm-err:not([hidden])').first().textContent(), /вже існує/);
   assert.equal(albumsApi().filter((a) => /весняне/i.test(a.title)).length, 1);
   assert.deepEqual(page.errors.filter((e) => !/409|DUPLICATE/.test(e)), []);
+});
+
+/** Папка свята на «комп'ютері»: { 'Група 1/Репортаж': [1, 40], … } → тимчасовий каталог із порожніми файлами. */
+function makeEventFolder(layout) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'azart-scan-'));
+  // кирилиця всередині — як у житті; корінь латиницею, бо Playwright не передає папку з кириличною назвою
+  const ev = path.join(root, 'Autumn');
+  for (const [dir, [from, to, ext = 'JPG']] of Object.entries(layout)) {
+    fs.mkdirSync(path.join(ev, dir), { recursive: true });
+    for (let n = from; n <= to; n++) fs.writeFileSync(path.join(ev, dir, `IMG_${String(n).padStart(4, '0')}.${ext}`), '');
+  }
+  fs.writeFileSync(path.join(ev, 'Thumbs.db'), '');
+  return { root, ev };
+}
+
+test('діапазони з папки: типи за підпапками, групи з Drive, «Скасувати» повертає як було', async () => {
+  const { root, ev } = makeEventFolder({
+    'гр 1/Репортаж': [1, 30], 'гр 1/Фон': [31, 45],
+    'Група 2/Репортаж': [100, 120], 'Група 2/Фон': [121, 140], 'Група 2/Портрет': [141, 142],
+    'Молодша/Фон': [200, 205]
+  });
+  try {
+    const page = await adminPage();
+    await page.click('.adm-top-btn >> nth=1');
+    await page.waitForSelector('.bm-card');
+    const chk = (v) => page.locator(`input[name=type][value="${v}"]`);
+    await chk('На фоні').uncheck();          // лишаємо тільки «Репортаж» — «Фон» має увімкнутися сам
+    await page.fill('#bm-title', 'Свято з папки');
+    await page.fill('#bm-drive', 'DEMO_GROUPS');
+
+    // «Скасувати» після сканування повертає і діапазони, і типи
+    await page.click('.bm-bar .btn-outline');
+    await page.waitForSelector('.bm-scan');
+    await page.setInputFiles('.bm-scan-input', ev);
+    await page.waitForSelector('.bm-scan-status.is-ok');
+    assert.equal(await chk('На фоні').isChecked(), true);
+    await page.click('.bm-ranges-actions .btn-outline-danger');
+    await page.waitForSelector('.bm-card');
+    assert.equal(await chk('На фоні').isChecked(), false);
+    assert.match(await page.locator('.bm-bar .btn-outline').textContent(), /Додати діапазон/);
+
+    // тепер по-справжньому
+    await page.click('.bm-bar .btn-outline');
+    await page.waitForSelector('.bm-scan');
+    assert.equal(await page.locator('.bm-scan-report').isHidden(), true, 'старий звіт не лишається');
+    await page.setInputFiles('.bm-scan-input', ev);
+    await page.waitForSelector('.bm-scan-status.is-ok');
+    assert.match(await page.locator('.bm-scan-status').textContent(), /Готово: 92 фото → 5 діапазонів/);
+    const report = await page.locator('.bm-scan-report').textContent();
+    assert.match(report, /увімкнено тип «На фоні»/);
+    assert.match(report, /Група 1: Репортаж 30, На фоні 15 → 2 діапазони/);
+    assert.match(report, /«Портрет»: 2 фото пропущено/);
+    assert.match(report, /Молодша.*такої групи немає на Google Диску/);
+    const rows = page.locator('.bm-range');
+    assert.equal(await rows.count(), 5);
+    assert.equal(await rows.nth(0).locator('input').nth(2).inputValue(), 'Група 1');
+
+    await page.click('.bm-ranges-actions .btn-outline');
+    await page.waitForSelector('.bm-card');
+    assert.match(await page.locator('.bm-bar .btn-outline').textContent(), /Діапазони \(5\)/);
+    await page.fill('#bm-deadline', '2030-06-01');
+    await page.click('.bm-bar .btn-primary');
+    await page.waitForSelector('.adm-card-title:has-text("Свято з папки")');
+    const saved = byTitle('Свято з папки');
+    assert.deepEqual(saved.types, ['Репортаж', 'На фоні']);
+    assert.deepEqual(saved.typeRanges.map((r) => [r.group, r.from, r.to, r.type]), [
+      ['Група 1', 1, 30, 'Репортаж'], ['Група 1', 31, 45, 'На фоні'],
+      ['Група 2', 100, 120, 'Репортаж'], ['Група 2', 121, 140, 'На фоні'],
+      ['Молодша', 200, 205, 'На фоні']
+    ]);
+    assert.deepEqual(page.errors, []);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('діапазони з папки: перетягування з Провідника (папки читаються частинами)', async () => {
+  const page = await adminPage();
+  await page.click('.adm-top-btn >> nth=1');
+  await page.waitForSelector('.bm-card');
+  await page.fill('#bm-drive', 'DEMO_GROUPS');
+  await page.click('.bm-bar .btn-outline');
+  await page.waitForSelector('.bm-scan');
+  // справжнє перетягування папки Playwright не вміє, тож імітуємо FileSystemEntry, як їх дає Chrome:
+  // readEntries віддає вміст частинами по 100, а потім порожній масив
+  const drop = (tree) => page.evaluate((tree) => {
+    const entry = (name, node) => typeof node === 'number'
+      ? { name, isFile: true, isDirectory: false }
+      : {
+          name, isFile: false, isDirectory: true,
+          createReader() {
+            const all = Object.entries(node).map(([k, v]) => entry(k, v));
+            let i = 0;
+            return { readEntries(ok) { setTimeout(() => { ok(all.slice(i, i + 100)); i += 100; }); } };
+          }
+        };
+    const items = Object.entries(tree).map(([k, v]) => ({ kind: 'file', webkitGetAsEntry: () => entry(k, v) }));
+    const ev = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(ev, 'dataTransfer', { value: { types: ['Files'], items } });
+    document.querySelector('.bm-scan').dispatchEvent(ev);
+  }, tree);
+  const pics = (from, to) => Object.fromEntries(Array.from({ length: to - from + 1 }, (_, i) => [`DSC_${from + i}.jpg`, 1]));
+  await drop({ 'Свято': { 'Група 3': { 'Репортаж': pics(1, 250), 'Фон': pics(251, 260) } } });
+  await page.waitForSelector('.bm-scan-status.is-ok');
+  assert.match(await page.locator('.bm-scan-status').textContent(), /260 фото → 2 діапазони/);
+  assert.equal(await page.locator('.bm-range').count(), 2);
+  assert.equal(await page.locator('.bm-range >> nth=0').locator('input').nth(1).inputValue(), '250');
+
+  // окремі файли замість папки — підказка
+  await drop({ 'IMG_1.JPG': 1 });
+  assert.match(await page.locator('.bm-scan-status.is-bad').textContent(), /папку, а не окремі файли/);
+  // папка без підпапок типу
+  await drop({ 'Свято': { 'Група 3': pics(1, 5) } });
+  await page.waitForSelector('.bm-scan-status.is-bad:has-text("Не знайдено")');
+  assert.equal(await page.locator('.bm-range').count(), 2, 'невдале сканування не чіпає діапазони');
+  assert.deepEqual(page.errors, []);
 });
 
 test('редагування бланка: поля заповнені, зміни зберігаються', async () => {

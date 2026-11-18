@@ -922,6 +922,24 @@ body.gallery-page { height: 100vh; height: 100dvh; overflow: hidden; display: bl
 .bm-rf { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 500; }
 .bm-rf .input, .bm-rf .select { padding: 8px 10px; font-size: 14px; border-radius: 8px; }
 .bm-range-del { width: 38px; height: 38px; padding: 0; border-radius: 8px; flex: none; }
+.bm-scan { border: 1.5px dashed var(--blue-border); background: var(--blue-50); border-radius: 14px; padding: 16px 18px; margin: 6px 0 4px; transition: border-color .15s, background-color .15s; }
+.bm-scan.is-over { border-color: var(--blue); border-style: solid; background: var(--blue-100); }
+.bm-scan-head { display: flex; align-items: center; gap: 8px; color: var(--blue); }
+.bm-scan-head strong { color: var(--text); font-size: 14.5px; }
+.bm-scan-text { margin: 6px 0 10px; font-size: 13px; line-height: 1.5; color: var(--text-soft); }
+.bm-scan-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.bm-scan-row .btn { border-radius: 999px; }
+.bm-scan-note { font-size: 12.5px; color: var(--muted); }
+.bm-scan-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.bm-scan-status { margin-top: 10px; font-size: 13.5px; font-weight: 600; color: var(--muted); }
+.bm-scan-status.is-ok { color: #15803d; }
+.bm-scan-status.is-bad { color: var(--red); }
+:root[data-theme='dark'] .bm-scan-status.is-ok { color: #5dd68a; }
+.bm-scan-report { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; font-size: 13px; line-height: 1.45; }
+.bm-scan-report li { padding-left: 14px; position: relative; overflow-wrap: anywhere; }
+.bm-scan-report li::before { content: ''; position: absolute; left: 2px; top: .6em; width: 5px; height: 5px; border-radius: 50%; background: var(--green); }
+.bm-scan-report li.is-warn::before { background: var(--amber); }
+.bm-scan-sub { display: block; color: var(--amber); font-size: 12.5px; }
 @media (max-width: 720px) {
   .bm-two { grid-template-columns: 1fr; gap: 0; }
   .bm-card { gap: 14px 28px; padding: 16px; }

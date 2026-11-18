@@ -6,7 +6,7 @@ import { h, icon, params, buildUrl, $, debounce, uid, fmtDateLong } from '../uti
 import { api, errorText, requestId, ApiError, isAdminLoggedIn } from '../api.js';
 import { loadingState, errorState } from '../ui.js';
 import { toast, openModal, confirmDialog } from '../modal.js';
-import { FORMAT_DIGITAL, TYPE_PORTRAIT, groupKey, cleanGroupName, isPortraitAlbum, normSize } from '../domain.js';
+import { FORMAT_DIGITAL, TYPE_PORTRAIT, groupKey, cleanGroupName, isPortraitAlbum, normSize, photoNumber } from '../domain.js';
 import { calcOrder, formatMoney } from '../pricing.js';
 import { draftKey, loadDraft, saveDraft, clearDraft, clearSelection, removeFromSelection } from '../draft.js';
 import { createRowsEditor } from '../rows.js';
@@ -68,9 +68,8 @@ function start(album, prices) {
 
   /** Тип за номером фото: перше число в імені файлу проти діапазонів поточної групи. */
   function detectType(name) {
-    const m = String(name || '').match(/(\d+)/);
-    if (!m) return null;
-    const n = Number(m[1]);
+    const n = photoNumber(name);
+    if (n === null) return null;
     const r = ranges.find((x) => x.gk === gk && n >= x.from && n <= x.to);
     return r ? r.type : null;
   }
