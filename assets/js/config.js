@@ -5,7 +5,7 @@
 export const CONFIG = {
   // Адреса веб-застосунку Google Apps Script (закінчується на /exec).
   // Отримується після Deploy → New deployment → Web app.
-  API_URL: 'https://script.google.com/macros/s/AKfycbz_4FtianOutp7c86uA7s2JEhKp1Q3HB-Fj507ki5cfYjnf3XnfS5BKeQXiIyBBoFjNZA/exec',
+  API_URL: 'https://script.google.com/macros/s/AKfycbwdERO7viiIKS0pGfijsLOt3XIRtcxjab33BwQYkHY3qJ3v087YMEwAEbXzSDls6wW1Hg/exec',
 
   // OAuth Client ID для входу адміністратора через Google (Google Cloud Console → Credentials → OAuth client ID,
   // тип «Web application», Authorized JavaScript origins = адреса сайту). Таке саме значення задайте на сервері
