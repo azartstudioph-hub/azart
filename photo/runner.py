@@ -25,10 +25,11 @@ def files_in(src):
 
 # ------------------------------------------------------------------ аналіз
 def scan_one(a):
-    """Аналіз одного фото. a = (шлях, поворот, вимкнені значення, баланс зйомки або None)."""
-    path, rotate, off, wb = a
+    """Аналіз одного фото. a = (шлях, поворот, вимкнені значення, баланс зйомки або None, кадрування)."""
+    path, rotate, off, wb = a[:4]
+    crop = a[4] if len(a) > 4 else None
     try:
-        rgb, _ = IO.load(path, rotate, max_side=SCAN_SIDE)
+        rgb, _ = IO.load(path, rotate, max_side=SCAN_SIDE, crop=crop)
         r = E.analyze(rgb, off=off, wb=wb, taken=IO.taken_time(path))
         r['mark'] = IO.has_mark(path)
         return r
@@ -39,7 +40,7 @@ def scan_one(a):
 
 def scan_args(path, st, wb=None):
     st = st or {}
-    return (path, int(st.get('rotate', 0) or 0), tuple(st.get('off') or ()), wb)
+    return (path, int(st.get('rotate', 0) or 0), tuple(st.get('off') or ()), wb, st.get('crop'))
 
 
 def series(paths, rs):
@@ -69,8 +70,8 @@ def scan(paths, settings=None, mapper=map, progress=None, stop=None):
 
 
 # ------------------------------------------------------------------ обробка
-def process_one(path, dst, r=None, zones=None, adjust=None, off=(), rotate=0, wb=None):
-    rgb, meta = IO.load(path, rotate)
+def process_one(path, dst, r=None, zones=None, adjust=None, off=(), rotate=0, wb=None, crop=None):
+    rgb, meta = IO.load(path, rotate, crop=crop)
     if r is None:
         r = E.analyze(rgb, off=off, wb=wb, taken=IO.taken_time(path))
     r = E.with_adjust(r, adjust, off)
@@ -80,10 +81,12 @@ def process_one(path, dst, r=None, zones=None, adjust=None, off=(), rotate=0, wb
 
 
 def work(a):
-    """Одне фото для паралельної обробки: (шлях, куди, аналіз, зони, поправки, вимкнені, поворот, баланс)."""
-    path, dst, r, zones, adjust, off, rotate, wb = a
+    """Одне фото для паралельної обробки:
+    (шлях, куди, аналіз, зони, поправки, вимкнені, поворот, баланс, кадрування)."""
+    path, dst, r, zones, adjust, off, rotate, wb = a[:8]
+    crop = a[8] if len(a) > 8 else None
     try:
-        process_one(path, dst, r, zones, adjust, off, rotate, wb)
+        process_one(path, dst, r, zones, adjust, off, rotate, wb, crop)
         return None
     except Exception:
         import traceback
@@ -91,9 +94,10 @@ def work(a):
 
 
 def manual(st):
-    """Чи має фото ручні поправки або зони."""
+    """Чи має фото ручні поправки, зони чи кадрування."""
     st = st or {}
-    return bool(st.get('zones')) or any(abs(float(v)) > 1e-9 for v in (st.get('adjust') or {}).values())
+    return (bool(st.get('zones')) or IO.crop_box(st.get('crop')) is not None
+            or any(abs(float(v)) > 1e-9 for v in (st.get('adjust') or {}).values()))
 
 
 def wanted(r, st):

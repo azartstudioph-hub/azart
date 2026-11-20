@@ -29,7 +29,12 @@ INFO_KEYS = ('white', 'black', 'gamma', 'temp', 'tint', 'whites', 'guard', 'ligh
 
 # ------------------------------------------------------------------ налаштування
 def blank():
-    return dict(zones=[], adjust={}, rotate=0, off=[], mode='auto')
+    return dict(zones=[], adjust={}, rotate=0, off=[], mode='auto', crop=None)
+
+
+def crop_key(c):
+    b = IO.crop_box(c)
+    return None if b is None else tuple(round(v, 4) for v in b)
 
 
 def load_settings(src):
@@ -71,7 +76,8 @@ def open_folder(src):
             STATE['settings'][f] = dict(zones=s.get('zones', []), adjust=s.get('adjust', {}),
                                         rotate=int(s.get('rotate', 0) or 0),
                                         off=[k for k in (s.get('off') or []) if k in E.AUTO_KEYS],
-                                        mode=s.get('mode') if s.get('mode') in ('force', 'skip') else 'auto')
+                                        mode=s.get('mode') if s.get('mode') in ('force', 'skip') else 'auto',
+                                        crop=s.get('crop') if crop_key(s.get('crop')) else None)
         gen = STATE['gen']
     if files: threading.Thread(target=scan_folder, args=(gen,), daemon=True).start()
     return files
@@ -91,7 +97,8 @@ def mapper_for(n):
 def key_of(f):
     s = st_of(f)
     wb = STATE['wb'].get(f)
-    return (int(s.get('rotate') or 0), tuple(sorted(s.get('off') or ())), None if wb is None else tuple(wb))
+    return (int(s.get('rotate') or 0), tuple(sorted(s.get('off') or ())), None if wb is None else tuple(wb),
+            crop_key(s.get('crop')))
 
 
 def scan_folder(gen):
@@ -107,7 +114,8 @@ def scan_folder(gen):
             with LOCK:
                 STATE['scan'].update(i=i, n=n, name=os.path.basename(p))
                 if p not in STATE['info'] or STATE['info'][p].get('key') is None:
-                    STATE['info'][p] = dict(r=r, key=(sets[p]['rotate'], tuple(sorted(sets[p]['off'] or ())), None))
+                    STATE['info'][p] = dict(r=r, key=(sets[p]['rotate'], tuple(sorted(sets[p]['off'] or ())), None,
+                                                      crop_key(sets[p].get('crop'))))
         mp, ex = mapper_for(workers_n())
         try:
             rs, forced = R.scan(files, sets, mp, prog, stop=lambda: not alive())
@@ -119,7 +127,7 @@ def scan_folder(gen):
             for f, r in rs.items():
                 s = sets[f]
                 STATE['info'][f] = dict(r=r, key=(s['rotate'], tuple(sorted(s['off'] or ())),
-                                                  STATE['wb'].get(f)))
+                                                  STATE['wb'].get(f), crop_key(s.get('crop'))))
             STATE['scan'].update(done=True, name='')
     except Exception:
         traceback.print_exc()
@@ -127,10 +135,13 @@ def scan_folder(gen):
 
 
 # ------------------------------------------------------------------ прев'ю
-def small_image(f):
-    key = (f, st_of(f)['rotate'])
+def small_image(f, full=False):
+    """Зменшений кадр для перегляду; full — без кадрування (для вибору рамки)."""
+    s = st_of(f)
+    crop = None if full else s.get('crop')
+    key = (f, s['rotate'], crop_key(crop))
     if STATE['small'].get('key') != key:
-        arr, _ = IO.load(f, st_of(f)['rotate'], max_side=PREVIEW_MAX)
+        arr, _ = IO.load(f, s['rotate'], max_side=PREVIEW_MAX, crop=crop)
         STATE['small'] = dict(key=key, arr=arr)
     return STATE['small']['arr']
 
@@ -188,7 +199,7 @@ def batch():
                 if not R.wanted(inf['r'] if inf else None, s): continue
                 r = inf['r'] if inf and inf.get('key') == key_of(f) and 'error' not in inf['r'] else None
                 todo.append((f, os.path.join(tmp, os.path.basename(f)), r, s.get('zones'), s.get('adjust'),
-                             tuple(s.get('off') or ()), s.get('rotate') or 0, STATE['wb'].get(f)))
+                             tuple(s.get('off') or ()), s.get('rotate') or 0, STATE['wb'].get(f), s.get('crop')))
         STATE['job'] = dict(stage='process', done=False, i=0, n=len(todo), name='', errors=[],
                             skipped=len(STATE['files'])-len(todo), workers=workers_n())
         STATE['processed'] = []
@@ -299,7 +310,7 @@ class H(BaseHTTPRequestHandler):
                 if not f: return self._json(dict(error='немає файлу'), 404)
                 with LOCK:
                     if u.path == '/api/before':
-                        return self._send(200, jpeg(small_image(f)), 'image/jpeg')
+                        return self._send(200, jpeg(small_image(f, full=q.get('full', [''])[0] == '1')), 'image/jpeg')
                     s = st_of(f)
                     base = analysis(f)
                     r = E.with_adjust(base, s.get('adjust'), s.get('off'))
@@ -328,6 +339,9 @@ class H(BaseHTTPRequestHandler):
                     s = st_of(f)
                     for k in ('zones', 'adjust', 'rotate'):
                         if k in data: s[k] = data[k]
+                    if 'crop' in data:
+                        c = IO.crop_box(data['crop'])
+                        s['crop'] = None if c is None else dict(zip(('x', 'y', 'w', 'h'), (round(v, 5) for v in c)))
                     if 'off' in data: s['off'] = [k for k in data['off'] if k in E.AUTO_KEYS]
                     if data.get('mode') in ('auto', 'force', 'skip'): s['mode'] = data['mode']
                 save_settings(); return self._json(dict(ok=True, status=status_of(f)))
