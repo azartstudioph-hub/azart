@@ -2,19 +2,21 @@
 
 1. Рівні: біла точка там, де закінчується гістограма (до межі пересвіту),
    чорна точка трохи всередину від її початку. Це головний інструмент.
-2. Середні тони — лише коли обличчя після рівнів лишається темним.
+2. Експозиція — коли обличчя головних людей після рівнів лишаються темними:
+   кадр світлішає, а найсвітліші місця м'яко притримуються (без різкого пересвіту).
 3. Баланс білого — лише коли білий одяг і шкіра разом показують, що світло
    зсунуте (зелене, жовте, синє, пурпурне). Природний колір не чіпається,
    і поправка ніколи не виводить шкіру з природних меж.
 4. Зони, що обробляються окремо:
    * білий одяг на людях (людей відокремлює від фону модель PP-HumanSeg) —
      з нього прибирається чужий відтінок (рожеві відблиски, зелений наліт),
+     а якщо після рівнів він вигорає — його світлі місця притримуються;
      маска розтушована і не виходить на фон; візерунок і вишивка не чіпаються;
    * світлі ділянки облич — не впливають на рівні і не пересвічуються;
    * нерівне світло — якщо одна частина кадру помітно темніша за іншу
-     (обличчя з одного боку темніші), її плавно вирівнюємо.
+     (обличчя з одного боку темніші), темніший бік плавно піднімаємо.
 5. Фото, якому нічого з цього не потрібно, лишається без змін.
-6. Повторний аналіз готового фото нічого нового не знаходить (поправки сходяться).
+6. Сильний відтінок прибирається не повністю, а як у фотографа — тепло лишається.
 
 Будь-яке автоматичне значення можна вимкнути для окремого фото (список off).
 """
@@ -42,26 +44,27 @@ P = dict(
     white_floor=150.0,   # не розтягувати більш ніж у 1,7 раза
     black_pct=0.1, black_k=0.62, black_min=6.0, black_cap=12.0,
     # --- обличчя: світлота шкіри L* ---
-    face_lo=53.0, face_lo_to=56.0,   # темніші обличчя піднімаємо середніми тонами
+    face_lift=68.0, face_lift_to=70.0,  # найсвітліше з головних облич темніше — додаємо експозицію
+    ev_cap=0.5, main_face=0.6,       # не більше +0.5 EV; головні обличчя — не менші за 0.6 від найбільшого
     face_hi=81.0,                    # світліші біла точка не робить
-    gamma_min=0.80,
     # --- баланс білого: зсуви в одиницях a*, b* ---
     w_target=(0.5, 1.0),             # природний білий: ледь теплий
     w_box=((-2.0, 4.0), (-6.5, 4.0)),  # у цих межах білий виглядає білим
     s_target=(14.0, 19.0),           # природна шкіра
     s_box=((8.0, 21.0), (13.0, 25.0)), s_tol=2.5,
-    wb_soft=1.5, wb_reg=0.3, wb_dead=2.0, wb_cap=14.0, wb_steps=8, wb_min=2.0,
-    w_frac0=0.02, w_frac=0.03, s_w_in=0.15, s_w_out=0.4, donor_w=0.5, inherit_max=0.2, series_dead=0.03,
+    wb_soft=1.5, wb_reg=0.3, wb_dead=2.0, wb_cap=14.0, wb_steps=8, wb_min=2.0, s_w_in=0.15, s_w_out=0.4,
+    w_frac0=0.02, w_frac=0.03, donor_w=0.5, inherit_max=0.2, series_dead=0.03,
     # --- білий одяг ---
     wh_L=50.0, wh_C=13.0, wh_seedL=82.0, wh_seedC=9.0, wh_min=0.002, wh_px_shift=2.5,
     wh_box=((-1.0, 1.5), (-3.5, 3.5)), wh_accept=((-3.5, 4.5), (-9.0, 6.0)), wh_comp_C=9.5,
     wh_a_dead=0.6, wh_a_k=0.95, wh_b_dead=3.0, wh_b_k=0.5,
     wh_gate_C=(12.0, 20.0), wh_gate_e=(10.0, 16.0), wh_print=(0.04, 0.12), wh_area=0.01, wh_p90=1.8,
     wh_feather=0.006, mask_side=640, person_thr=0.5, wh_down=5.0,
+    wh_hot=10.0, wh_knee=0.72,       # білий одяг вигорає на ≥10 % — притримуємо світлі місця
     # --- світлі ділянки облич ---
     guard_on=0.94, guard_frac=3.0, guard_knee=0.88,
     # --- нерівне світло між обличчями ---
-    light_min=9.0, light_min2=14.0, light_k=0.7, light_cap=0.45, light_r2=0.6,
+    light_min=9.0, light_min2=14.0, light_k=0.7, light_cap=0.6, light_r2=0.6,
     # --- технічне ---
     map_scale=0.25, tile_rows=384, analysis_side=1400,
     # --- ручні локальні тіні / світла (лише з повзунків) ---
@@ -69,9 +72,9 @@ P = dict(
 )
 
 # назви автоматичних значень, які можна вимкнути
-AUTO_KEYS = ('white', 'black', 'gamma', 'temp', 'tint', 'whites', 'guard', 'light')
+AUTO_KEYS = ('white', 'black', 'ev', 'gamma', 'temp', 'tint', 'whites', 'whites_hi', 'guard', 'light')
 # без чого фото вважається «не потребує обробки»: сама лише чорна точка — не привід
-MAJOR = ('white', 'gamma', 'temp', 'tint', 'whites', 'guard', 'light')
+MAJOR = ('white', 'ev', 'gamma', 'temp', 'tint', 'whites', 'whites_hi', 'guard', 'light')
 
 # ------------------------------------------------------------------ базові функції
 def s2l(x): return np.where(x <= 0.04045, x/12.92, ((x+0.055)/1.055)**2.4).astype(np.float32)
@@ -279,11 +282,26 @@ def gains_for_shift(L, a, b, da, db, lv=None):
     return dt, dn
 
 
+def knee_of(r):
+    """Де починається м'яке притримування світлих місць (1 — ніде).
+    З додатною експозицією світлі місця не обрізаються різко, а плавно доходять до білого."""
+    k = float(r.get('knee', 1.0) or 1.0)
+    ev = float(r.get('ev', 0.0) or 0.0)
+    if ev > 0.02: k = min(k, 1.0-min(0.15, 0.3*ev))
+    if r.get('light'): k = min(k, 0.92)     # піднятий бік кадру теж не обрізаємо різко
+    return k
+
+
 def levels(v, r):
     """Рівні як у Photoshop: однаково для всіх каналів, v — sRGB 0..1."""
     b, w = r['black']/255.0, r['white']/255.0
     t = (v-b)*(1.0/max(w-b, 1e-3))
-    np.clip(t, 0, 1, out=t)
+    np.maximum(t, 0, out=t)
+    kn = knee_of(r)
+    if kn < 0.999:
+        hi = t > kn
+        if hi.any(): t[hi] = kn+(1-kn)*np.tanh((t[hi]-kn)/(1-kn))
+    np.minimum(t, 1, out=t)
     g = r.get('gamma', 1.0)
     if abs(g-1) > 1e-3: np.power(t, g, out=t)
     c = r.get('contrast', 0.0)
@@ -303,12 +321,13 @@ def channel_luts(r):
 
 
 def light_map(shape, light, y0=0, full_h=None):
-    """Карта вирівнювання світла в EV для смуги рядків (площина по кадру)."""
+    """Карта вирівнювання світла в EV для смуги рядків: площина по кадру,
+    яка лише піднімає темніший бік (світліший лишається як був)."""
     if not light: return None
     H = full_h or shape[0]; h, w = shape
     xx = (np.arange(w, dtype=np.float32)+0.5)/w-0.5
     yy = (np.arange(y0, y0+h, dtype=np.float32)+0.5)/H-0.5
-    return light['x']*xx[None, :]+light['y']*yy[:, None]
+    return np.maximum(light['x']*xx[None, :]+light['y']*yy[:, None]-float(light.get('c', 0.0)), 0)
 
 
 # ------------------------------------------------------------------ маски зон
@@ -326,13 +345,14 @@ def ellipse_mask(shape, boxes, grow=(0.62, 0.78), soft=(0.65, 1.0)):
     return out
 
 
-def body_prior(shape, boxes, down=7.5):
-    """Де може бути одяг людей: під обличчями і трохи вбік (down — на скільки висот обличчя вниз)."""
+def body_prior(shape, boxes, down=7.5, up=-0.55):
+    """Де може бути одяг людей: під обличчями і трохи вбік (down — на скільки висот
+    обличчя вниз; up — звідки починати: від'ємне — нижче верху обличчя)."""
     hs, ws = shape
     m = np.zeros(shape, np.uint8)
     for x, y, w, h in boxes:
         x0, x1 = int(max((x-1.6*w)*ws, 0)), int(min((x+w+1.6*w)*ws, ws))
-        y0, y1 = int(max((y+0.55*h)*hs, 0)), int(min((y+down*h)*hs, hs))
+        y0, y1 = int(max((y-up*h)*hs, 0)), int(min((y+down*h)*hs, hs))
         m[y0:y1, x0:x1] = 1
     return m
 
@@ -371,7 +391,9 @@ def white_regions(srgb_small, boxes, p=P, for_wb=False, person=None):
     # для виправлення — лише верхній одяг: колготки на ногах просвічують шкіру,
     # і їхній теплий відтінок природний; для оцінки балансу — весь одяг
     down = 7.5 if for_wb else p['wh_down']
-    near = body_prior((hs, ws), boxes, down).astype(bool) if boxes else np.ones((hs, ws), bool)
+    # піднята над головою рука — теж одяг; на людях (за маскою людей) це безпечно
+    up = 1.2 if (person is not None and not for_wb) else -0.55
+    near = body_prior((hs, ws), boxes, down, up).astype(bool) if boxes else np.ones((hs, ws), bool)
     if person is not None: near &= person > p['person_thr']
     cmax = p['wh_C']+(4.0 if for_wb else 0.0)
     cand = ((L > p['wh_L']) & (C < cmax) & (B > -9.0) & (A < 9.0) & (A > -8.0)
@@ -408,7 +430,7 @@ def whites_mask(srgb_small, boxes, p=P, person=None):
     розтушований і не виходить за межі людини, тож світлий фон поряд не змінюється.
     Тканину з дрібним кольоровим візерунком (квіти на сукні) не чіпаємо: блідий край
     візерунка легко сплутати з відблиском.
-    Повертає (маска, a_ref, b_ref, тверда маска) або None."""
+    Повертає (маска, a_ref, b_ref, тверда маска, маска одягу без урахування візерунка) або None."""
     if person is None: person = person_prob(srgb_small)
     res = white_regions(srgb_small, boxes, p, person=person)
     if res is None: return None
@@ -429,6 +451,7 @@ def whites_mask(srgb_small, boxes, p=P, person=None):
     bref = cv2.GaussianBlur(bref*hard, (0, 0), sig*2)/wsum
     m = np.clip(cv2.GaussianBlur(m, (0, 0), sig)*1.6, 0, 1)
     if person is not None: m *= np.clip((person-0.25)/0.5, 0, 1)
+    body = m.copy()
     # візерунок — кольорові плями всередині речі (квіти на сукні). Червоні штани чи
     # вишивка поряд — не всередині: біля них якраз і бувають рожеві відблиски
     hu = hard.astype(np.uint8)
@@ -438,7 +461,7 @@ def whites_mask(srgb_small, boxes, p=P, person=None):
     spots = (filled > 0) & (hu == 0) & (np.hypot(lab[..., 1], lab[..., 2]) > 12)
     r = max(3, int(round(0.012*np.hypot(*m.shape))))
     m *= 1-ss(_box(spots.astype(np.float32), r), *p['wh_print'])
-    return m.astype(np.float32), aref.astype(np.float32), bref.astype(np.float32), hard
+    return m.astype(np.float32), aref.astype(np.float32), bref.astype(np.float32), hard, body.astype(np.float32)
 
 
 def whites_shift(L, A, B, aref, bref, p=P):
@@ -477,6 +500,23 @@ def apply_whites(out8, mk, p=P):
         da, db = whites_shift(lab[..., 0], lab[..., 1], lab[..., 2], aref[r0:r1, x0:x1], bref[r0:r1, x0:x1], p)
         lab[..., 1] -= mm*da; lab[..., 2] -= mm*db
         out8[r0:r1, x0:x1] = np.clip(lab2srgb(lab)*255+0.5, 0, 255).astype(np.uint8)
+    return out8
+
+
+def protect_whites(rgb8, r, p, zones, out8, m_small):
+    """Білий одяг, що вигорає після рівнів: у його зоні світлі місця не обрізаються,
+    а плавно доходять до білого — складки й фактура тканини лишаються видимими."""
+    H, W = out8.shape[:2]
+    ys, xs = np.nonzero(m_small > 0.02)
+    if not len(ys): return out8
+    r2 = dict(r, knee=p['wh_knee'], whites=0.0, whites_hi=0.0, guard=0.0)
+    sy, sx = H/m_small.shape[0], W/m_small.shape[1]
+    y0, y1 = max(int(ys.min()*sy)-2, 0), min(int((ys.max()+1)*sy)+2, H)
+    x0, x1 = max(int(xs.min()*sx)-2, 0), min(int((xs.max()+1)*sx)+2, W)
+    alt = render(rgb8, r2, p, zones)[y0:y1, x0:x1].astype(np.float32)
+    m = cv2.resize(m_small, (W, H), interpolation=cv2.INTER_LINEAR)[y0:y1, x0:x1, None]
+    cur = out8[y0:y1, x0:x1].astype(np.float32)
+    out8[y0:y1, x0:x1] = np.clip(cur+m*(alt-cur)+0.5, 0, 255).astype(np.uint8)
     return out8
 
 
@@ -611,14 +651,14 @@ def _light(sm, faces, sidx, r, p):
     pre = _pre_small(sm, r)
     hs, ws = sm.shape[:2]
     pts = []
+    big = max(f['sbox'][2] for f in faces)
     for f, idx in zip(faces, sidx):
         if idx is None or len(idx[0]) < 60: continue
         x, y, w, h = f['sbox']
+        if w < p['main_face']*big: continue     # дрібні обличчя на задньому плані не порівнюємо
         pts.append(((x+w/2)/ws-0.5, (y+h/2)/hs-0.5, skin_L_of(pre, idx), w*h))
     if len(pts) < 2: return None
     a = np.array(pts, np.float64)
-    sizes = a[:, 3]
-    if sizes.max()/max(sizes.min(), 1) > 6: return None    # дуже різні плани — не порівнюємо
     X = [np.ones(len(a)), a[:, 0]]
     use_y = len(a) >= 4 and np.ptp(a[:, 1]) > 0.3
     if use_y: X.append(a[:, 1])
@@ -630,13 +670,15 @@ def _light(sm, faces, sidx, r, p):
     tot = float(np.sum((a[:, 2]-a[:, 2].mean())**2))+1e-6
     r2 = 1-float(np.sum(resid**2))/tot
     if spread < (p['light_min'] if len(a) >= 3 else p['light_min2']) or (len(a) >= 3 and r2 < p['light_r2']): return None
-    # L* на 1 EV біля шкіри ≈ 17.6; темний бік піднімаємо, світлий трохи опускаємо
+    # L* на 1 EV біля шкіри ≈ 17.6; темний бік піднімаємо, найсвітліше обличчя лишається як було
     k = -p['light_k']/17.6
     gx = float(coef[1]*k); gy = float(coef[2]*k) if use_y else 0.0
-    edge = abs(gx)*0.5+abs(gy)*0.5
+    j = int(np.argmax(a[:, 2]))
+    c = gx*a[j, 0]+gy*a[j, 1]
+    edge = max(gx*sx+gy*sy for sx in (-0.5, 0.5) for sy in (-0.5, 0.5))-c
     if edge > p['light_cap']:
-        gx, gy = gx*p['light_cap']/edge, gy*p['light_cap']/edge
-    return dict(x=round(gx, 3), y=round(gy, 3), spread=round(spread, 1))
+        f = p['light_cap']/edge; gx, gy, c = gx*f, gy*f, c*f
+    return dict(x=round(gx, 3), y=round(gy, 3), c=round(c, 3), spread=round(spread, 1))
 
 
 def analyze(rgb8, p=P, off=(), wb=None, taken=None, **_):
@@ -650,7 +692,7 @@ def analyze(rgb8, p=P, off=(), wb=None, taken=None, **_):
     boxes = [(f['sbox'][0]/ws, f['sbox'][1]/hs, f['sbox'][2]/ws, f['sbox'][3]/hs) for f in faces]
     r = dict(v=VERSION, faces=len(faces), boxes=[tuple(round(v, 4) for v in b) for b in boxes],
              temp=0.0, tint=0.0, ev=0.0, white=255.0, black=0.0, gamma=1.0,
-             whites=0.0, guard=0.0, light=None,
+             whites=0.0, whites_hi=0.0, guard=0.0, light=None,
              shadows=0.0, highlights=0.0, contrast=0.0, sat=0.0)
     sidx = skin_index(sm, faces)
     allidx = _merge_idx(sidx)
@@ -694,9 +736,10 @@ def analyze(rgb8, p=P, off=(), wb=None, taken=None, **_):
     if 'light' not in off and len(faces) >= 2:
         r['light'] = _light(sm, faces, sidx, r, p)
 
-    # 3) рівні за гістограмою
+    # 3) рівні за гістограмою — по кадру без вирівнювання світла: спершу рівні для
+    #    всього кадру, потім темніший бік піднімається поверх них
+    w, b, (q_lo, q_hi) = hist_levels(_pre_small(sm, dict(r, light=None)), p, faces_m)
     pre = _pre_small(sm, r)
-    w, b, (q_lo, q_hi) = hist_levels(pre, p, faces_m)
     r['hist'] = (round(q_lo, 1), round(q_hi, 1))
     if 'white' not in off: r['white'] = round(w, 1)
     if 'black' not in off: r['black'] = round(b, 1)
@@ -718,23 +761,45 @@ def analyze(rgb8, p=P, off=(), wb=None, taken=None, **_):
             r['white'] = round(hi, 1)
             if 255.0/r['white'] < p['white_gain_min']: r['white'] = 255.0
             L1 = skin_L_px(levels(px0.copy(), r))
-        # темне обличчя піднімаємо середніми тонами (не локально — об'єм лиця лишається)
-        if 'gamma' not in off and L1 < p['face_lo']:
-            lo, hi = p['gamma_min'], 1.0
-            for _ in range(14):
-                mid = (lo+hi)/2
-                if skin_L_px(levels(px0.copy(), dict(r, gamma=mid))) < p['face_lo_to']: hi = mid
-                else: lo = mid
-            r['gamma'] = round(max(lo, p['gamma_min']), 3)
+        # обличчя головних людей темні — додаємо експозицію, як фотограф повзунком
+        # «Експозиція»: світлішає весь кадр, а найсвітліші місця плавно доходять до білого
+        if 'ev' not in off:
+            big = max(f['sbox'][2] for f in faces)
+            main = [idx for f, idx in zip(faces, sidx)
+                    if idx is not None and f['sbox'][2] >= p['main_face']*big]
+            if main:
+                fpx = [s2l(pre[idx[0], idx[1]]) for idx in main]
+
+                def brightest(ev):
+                    rr = dict(r, ev=ev)
+                    return max(skin_L_px(levels(l2s(x*2.0**ev), rr)) for x in fpx)
+                Lm = brightest(0.0)
+                r['faceL_main'] = round(Lm, 1)
+                if Lm < p['face_lift']:
+                    lo, hi = 0.0, p['ev_cap']
+                    if brightest(hi) <= p['face_lift_to']: lo = hi
+                    else:
+                        for _ in range(14):
+                            mid = (lo+hi)/2
+                            if brightest(mid) < p['face_lift_to']: lo = mid
+                            else: hi = mid
+                    if lo >= 0.05: r['ev'] = round(lo, 2)
+    if r['ev']: pre = _pre_small(sm, r)
     out = _tone_small(sm, r, pre)
     if allidx is not None: r['skinL_out'] = round(skin_L_of(out, allidx), 1)
 
-    # 5) білий одяг
-    if 'whites' not in off:
+    # 5) білий одяг (на людях — тож лише там, де є обличчя): чужий відтінок і вигорання світлих місць
+    if boxes and ('whites' not in off or 'whites_hi' not in off):
         out_s = small_for_mask(out, p)
         mk = whites_mask(out_s, boxes, p, person)
-        if mk is not None:
-            m, aref, bref, hard = mk
+        if mk is not None and 'whites_hi' not in off:
+            body = mk[4] > 0.5
+            if body.any():
+                r['whites_hot'] = round(100*float(np.mean(chmax(out_s)[body] >= 0.985)), 1)
+                if r['whites_hot'] >= p['wh_hot'] and body.mean() >= p['wh_area']*0.5:
+                    r['whites_hi'] = 1.0
+        if mk is not None and 'whites' not in off:
+            m, aref, bref, hard = mk[:4]
             sel = (hard > 0) & (m > 0.5)
             lab_o = labf(out_s)
             da_, db_ = whites_shift(lab_o[..., 0], lab_o[..., 1], lab_o[..., 2], aref, bref, p)
@@ -770,10 +835,12 @@ def changes_of(r, p=P):
     ch = []
     if r.get('white', 255) < 255 and 255.0/r['white'] >= p['white_gain_min']-1e-6: ch.append('white')
     if r.get('black', 0) >= p['black_min']: ch.append('black')
+    if abs(r.get('ev', 0)) >= 0.05: ch.append('ev')
     if abs(r.get('gamma', 1)-1) >= 0.015: ch.append('gamma')
     if abs(r.get('temp', 0)) >= 0.004: ch.append('temp')
     if abs(r.get('tint', 0)) >= 0.004: ch.append('tint')
     if r.get('whites'): ch.append('whites')
+    if r.get('whites_hi'): ch.append('whites_hi')
     if r.get('guard'): ch.append('guard')
     if r.get('light'): ch.append('light')
     return ch
@@ -821,10 +888,9 @@ def segments(sigs, jump=0.11, k=2.6, gap=1200.0):
 
 
 def series_wb(rs, p=P):
-    """Баланс білого для фото без власних білих речей — від сусідніх фото тієї ж зйомки,
-    де білі речі є. Так кадри однієї серії не відрізняються кольором.
-    Береться лише там, де це підтверджує шкіра на самому фото; інакше лишається
-    власна оцінка фото. rs — результати analyze у порядку файлів.
+    """Баланс білого для фото без власних свідчень (ні білих речей, ні облич) —
+    від сусідніх фото тієї ж зйомки, де білі речі є.
+    rs — результати analyze у порядку файлів.
     Повертає {номер: (temp, tint)} для фото, яким баланс треба змінити."""
     out = {}
     for seg in segments([r.get('sig') for r in rs]):
@@ -836,26 +902,13 @@ def series_wb(rs, p=P):
         if np.hypot(t, n) < p['series_dead']: t = n = 0.0
         for i in seg:
             if i in donors or rs[i].get('wb_w', 0) >= p['inherit_max']: continue
-            ti, ni = _skin_agrees(rs[i], t, n, p)
-            # де серія нічого певного не каже (або шкіра на фото з нею не згодна),
-            # лишається власна оцінка фото
+            # фото з обличчями лишається зі своєю оцінкою: кожен кадр фотограф
+            # поправляє окремо, і власна оцінка ближча до того, що він обирає
+            if (rs[i].get('wb_info') or {}).get('skin_ab'): continue
             own = rs[i]['wb_own']
-            if ti == 0.0: ti = own[0]
-            if ni == 0.0: ni = own[1]
-            if abs(ti-own[0]) > 0.006 or abs(ni-own[1]) > 0.006:
-                out[i] = (round(float(ti), 3), round(float(ni), 3))
+            if abs(t-own[0]) > 0.006 or abs(n-own[1]) > 0.006:
+                out[i] = (round(float(t), 3), round(float(n), 3))
     return out
-
-
-def _skin_agrees(r, t, n, p=P, margin=2.0):
-    """Поправку серії фото бере лише там, де її підтверджує шкіра на самому фото:
-    якщо обличчя вже природного кольору, зсув по цій осі зробив би його неприроднім."""
-    sk = (r.get('wb_info') or {}).get('skin_ab')
-    if not sk: return t, n
-    ta, tb = p['s_target']
-    if (t < 0 and not sk[1] > tb+margin) or (t > 0 and not sk[1] < tb-margin): t = 0.0
-    if (n > 0 and not sk[0] < ta-margin) or (n < 0 and not sk[0] > ta+margin): n = 0.0
-    return t, n
 
 
 def _agree(v, w):
@@ -961,10 +1014,12 @@ def render(rgb8, r, p=P, zones=None):
             y1 = min(y0+rows, H)
             out[y0:y1] = _float_block(rgb8[y0:y1], y0, H, None if gain is None else gain[y0:y1],
                                       None if zsat is None else zsat[y0:y1], r, lut_lin)
-    if r.get('whites'):
+    if r.get('whites') or r.get('whites_hi'):
         small = small_for_mask(out, p).astype(np.float32)/255.0
         mk = whites_mask(small, r.get('boxes') or [], p)
-        if mk is not None: out = apply_whites(out, mk, p)
+        if mk is not None:
+            if r.get('whites_hi'): out = protect_whites(rgb8, r, p, zones, out, mk[4])
+            if r.get('whites'): out = apply_whites(out, mk, p)
     if r.get('guard') and r.get('boxes'):
         out = apply_guard(out, r['boxes'], p)
     return out
@@ -985,7 +1040,8 @@ def with_adjust(r, adj, off=()):
         elif k == 'black': r['black'] = 0.0
         elif k == 'gamma': r['gamma'] = 1.0
         elif k in ('temp', 'tint'): r[k] = 0.0
-        elif k in ('whites', 'guard'): r[k] = 0.0
+        elif k in ('whites', 'whites_hi', 'guard'): r[k] = 0.0
+        elif k == 'ev': r['ev'] = 0.0
         elif k == 'light': r['light'] = None
     if adj:
         for k, (lo, hi) in ADJ_LIMITS.items():
