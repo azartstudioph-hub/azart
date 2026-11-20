@@ -23,9 +23,38 @@ def load(path, rotate=0, max_side=None):
     return np.asarray(im), meta
 
 
-def save(arr, path, meta=None, quality=95):
+MARK = b'AZART auto 2'
+
+
+def save(arr, path, meta=None, quality=95, mark=True):
+    """Записує JPEG з тим самим колірним профілем і EXIF. Позначка в коментарі файлу
+    каже програмі при наступному відкритті папки, що фото вже оброблене."""
     kw = dict(quality=quality, subsampling=0)
     if meta:
         if meta.get('icc'): kw['icc_profile'] = meta['icc']
         if meta.get('exif'): kw['exif'] = meta['exif']
-    Image.fromarray(arr).save(path, **kw)
+    if mark: kw['comment'] = MARK
+    Image.fromarray(arr).save(path, 'JPEG', **kw)
+
+
+def has_mark(path):
+    """Чи це фото вже оброблене програмою AZART."""
+    try:
+        with Image.open(path) as im:
+            c = im.info.get('comment') or b''
+        return (c if isinstance(c, bytes) else str(c).encode('utf-8', 'ignore')).startswith(b'AZART auto')
+    except Exception:
+        return False
+
+
+def taken_time(path):
+    """Час зйомки з EXIF (секунди) або None. Потрібен, щоб відрізнити зйомки в одній папці."""
+    import time
+    try:
+        with Image.open(path) as im:
+            ex = im.getexif()
+            v = ex.get_ifd(0x8769).get(36867) or ex.get(306)
+        if not v: return None
+        return time.mktime(time.strptime(str(v).strip()[:19], '%Y:%m:%d %H:%M:%S'))
+    except Exception:
+        return None

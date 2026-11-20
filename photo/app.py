@@ -1,8 +1,11 @@
-"""Локальний застосунок: перегляд «до/після», ручні поправки, зони, поворот,
-обробка всієї папки і окреме збереження результату.
+"""Локальний застосунок: перегляд «до/після», підсумкові автоматичні значення з можливістю
+вимкнути кожне, ручні поправки, зони, поворот, обробка папки і збереження результату.
 Запуск:  python app.py [шлях_до_папки_з_фото]
-Оригінали ніколи не змінюються."""
-import os, sys, json, io, shutil, threading, webbrowser, traceback
+
+Після відкриття папки програма аналізує кожне фото і позначає, яким обробка потрібна,
+а яким ні. Обробляються лише потрібні. Результат зберігається або окремою папкою
+(оригінали не змінюються), або замість оригіналів — на вибір."""
+import os, sys, json, io, shutil, threading, webbrowser, traceback, time
 from concurrent.futures import ProcessPoolExecutor
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -16,12 +19,19 @@ HERE = E.res_dir()
 SETTINGS_FILE = 'azart-settings.json'
 TMP_DIR = '__azart_tmp'
 PREVIEW_MAX = 1280
-PING_VERSION = 1
+PING_VERSION = 2
 LOCK = threading.Lock()
-STATE = dict(src=None, files=[], small={}, cast={}, analysis={}, settings={}, job=None, workers=None)
+STATE = dict(src=None, files=[], small={}, info={}, wb={}, settings={}, job=None, scan=None,
+             workers=None, gen=0, processed=[])
+INFO_KEYS = ('white', 'black', 'gamma', 'temp', 'tint', 'whites', 'guard', 'light',
+             'ev', 'shadows', 'highlights', 'contrast', 'sat')
 
 
 # ------------------------------------------------------------------ налаштування
+def blank():
+    return dict(zones=[], adjust={}, rotate=0, off=[], mode='auto')
+
+
 def load_settings(src):
     p = os.path.join(src, SETTINGS_FILE)
     if os.path.exists(p):
@@ -32,41 +42,88 @@ def load_settings(src):
 
 def save_settings():
     if not STATE['src']: return
-    data = {os.path.basename(f): s for f, s in STATE['settings'].items()
-            if s.get('zones') or s.get('adjust') or s.get('rotate')}
+    data = {}
+    for f, s in STATE['settings'].items():
+        keep = {k: v for k, v in s.items() if v and not (k == 'mode' and v == 'auto')}
+        if keep: data[os.path.basename(f)] = keep
     p = os.path.join(STATE['src'], SETTINGS_FILE)
-    if data: json.dump(data, open(p, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
-    elif os.path.exists(p): os.remove(p)
+    try:
+        if data: json.dump(data, open(p, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        elif os.path.exists(p): os.remove(p)
+    except OSError:
+        pass
 
 
 def st_of(f):
-    return STATE['settings'].setdefault(f, dict(zones=[], adjust={}, rotate=0))
+    return STATE['settings'].setdefault(f, blank())
 
 
 def open_folder(src):
     remember_folder(src)
     files = R.files_in(src)
-    STATE.update(src=src, files=files, small={}, cast={}, analysis={}, settings={}, job=None)
     saved = load_settings(src)
-    for f in files:
-        s = saved.get(os.path.basename(f)) or {}
-        STATE['settings'][f] = dict(zones=s.get('zones', []), adjust=s.get('adjust', {}),
-                                    rotate=int(s.get('rotate', 0)))
-    threading.Thread(target=prepare_casts, daemon=True).start()
+    with LOCK:
+        STATE['gen'] += 1
+        STATE.update(src=src, files=files, small={}, info={}, wb={}, settings={}, job=None,
+                     processed=[], scan=dict(i=0, n=len(files), done=not files, name=''))
+        for f in files:
+            s = saved.get(os.path.basename(f)) or {}
+            STATE['settings'][f] = dict(zones=s.get('zones', []), adjust=s.get('adjust', {}),
+                                        rotate=int(s.get('rotate', 0) or 0),
+                                        off=[k for k in (s.get('off') or []) if k in E.AUTO_KEYS],
+                                        mode=s.get('mode') if s.get('mode') in ('force', 'skip') else 'auto')
+        gen = STATE['gen']
+    if files: threading.Thread(target=scan_folder, args=(gen,), daemon=True).start()
     return files
 
 
-def prepare_casts():
-    """Колір зйомок рахується один раз по вибірці кадрів — не по всій папці."""
+def workers_n():
+    return max(1, min(int(STATE.get('workers') or R.default_workers()), 8))
+
+
+def mapper_for(n):
+    """Паралельний map у процесах-помічниках (або звичайний, якщо процес один)."""
+    if n <= 1: return map, None
+    ex = ProcessPoolExecutor(max_workers=n, initializer=R.init_worker)
+    return (lambda fn, args: ex.map(fn, args, chunksize=1)), ex
+
+
+def key_of(f):
+    s = st_of(f)
+    wb = STATE['wb'].get(f)
+    return (int(s.get('rotate') or 0), tuple(sorted(s.get('off') or ())), None if wb is None else tuple(wb))
+
+
+def scan_folder(gen):
+    """Фоновий аналіз усіх фото папки: статус кожного видно в списку одразу."""
     try:
         with LOCK:
-            if STATE['cast'] or not STATE['files']: return
             files = list(STATE['files'])
-        c = R.casts_for(files)
-        STATE['cast'] = c
-        STATE['analysis'].clear()
+            sets = {f: dict(st_of(f)) for f in files}
+        alive = lambda: STATE['gen'] == gen
+
+        def prog(i, n, p, r):
+            if not alive(): return
+            with LOCK:
+                STATE['scan'].update(i=i, n=n, name=os.path.basename(p))
+                if p not in STATE['info'] or STATE['info'][p].get('key') is None:
+                    STATE['info'][p] = dict(r=r, key=(sets[p]['rotate'], tuple(sorted(sets[p]['off'] or ())), None))
+        mp, ex = mapper_for(workers_n())
+        try:
+            rs, forced = R.scan(files, sets, mp, prog, stop=lambda: not alive())
+        finally:
+            if ex: ex.shutdown(wait=False)
+        if rs is None or not alive(): return
+        with LOCK:
+            STATE['wb'] = {f: tuple(v) for f, v in (forced or {}).items()}
+            for f, r in rs.items():
+                s = sets[f]
+                STATE['info'][f] = dict(r=r, key=(s['rotate'], tuple(sorted(s['off'] or ())),
+                                                  STATE['wb'].get(f)))
+            STATE['scan'].update(done=True, name='')
     except Exception:
         traceback.print_exc()
+        if STATE['gen'] == gen: STATE['scan'].update(done=True, error=traceback.format_exc(limit=2))
 
 
 # ------------------------------------------------------------------ прев'ю
@@ -79,11 +136,30 @@ def small_image(f):
 
 
 def analysis(f):
-    key = (f, st_of(f)['rotate'], bool(STATE['cast']))
-    if STATE['analysis'].get(f, (None,))[0] != key:
-        a = small_image(f)
-        STATE['analysis'][f] = (key, E.analyze(a, series_cast=STATE['cast'].get(f)))
-    return STATE['analysis'][f][1]
+    """Результат аналізу з урахуванням повороту, вимкнених значень і балансу зйомки."""
+    key = key_of(f)
+    inf = STATE['info'].get(f)
+    if inf and inf.get('key') == key: return inf['r']
+    s = st_of(f)
+    r = E.analyze(small_image(f), off=tuple(s.get('off') or ()), wb=STATE['wb'].get(f), taken=IO.taken_time(f))
+    r['mark'] = IO.has_mark(f)
+    STATE['info'][f] = dict(r=r, key=key)
+    return r
+
+
+def status_of(f):
+    """Що показати в списку: wait — ще аналізується, need — потребує обробки,
+    ok — не потребує, done — уже оброблене програмою, err — не вдалося прочитати."""
+    inf = STATE['info'].get(f)
+    s = st_of(f)
+    r = inf['r'] if inf else None
+    if r is None: st = 'wait'
+    elif 'error' in r: st = 'err'
+    elif r.get('mark'): st = 'done'
+    else: st = 'need' if r.get('needs') else 'ok'
+    return dict(st=st, will=R.wanted(r, s) if r is not None else (s.get('mode') == 'force' or R.manual(s)),
+                manual=R.manual(s), mode=s.get('mode') or 'auto', rotate=s.get('rotate') or 0,
+                done=f in STATE['processed'])
 
 
 def jpeg(arr, q=86):
@@ -91,50 +167,84 @@ def jpeg(arr, q=86):
 
 
 # ------------------------------------------------------------------ пакетна обробка
-def batch(workers=None):
+def batch():
     for v in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS',
               'NUMEXPR_NUM_THREADS', 'VECLIB_MAXIMUM_THREADS'):
         os.environ[v] = '1'        # процеси-помічники не множать потоки
-    src = STATE['src']; tmp = os.path.join(src, TMP_DIR)
-    shutil.rmtree(tmp, ignore_errors=True); os.makedirs(tmp, exist_ok=True)
-    files = list(STATE['files'])
-    STATE['job'] = dict(stage='process', done=False, i=0, n=len(files), name='', errors=[])
+    src = STATE['src']; tmp = os.path.join(src, TMP_DIR); gen = STATE['gen']
+    STATE['job'] = dict(stage='scan', done=False, i=0, n=0, name='', errors=[])
     try:
-        if not STATE['cast']: prepare_casts()
-        args = [(f, os.path.join(tmp, os.path.basename(f)), STATE['cast'].get(f),
-                 st_of(f)['zones'], st_of(f)['adjust'], st_of(f)['rotate']) for f in files]
-        n = int(workers or STATE.get('workers') or R.default_workers())
-        n = max(1, min(n, 8))
-        STATE['job']['workers'] = n
-        if n > 1:
-            with ProcessPoolExecutor(max_workers=n, initializer=R.init_worker) as ex:
-                for k, err in enumerate(ex.map(R.work, args, chunksize=1)):
-                    STATE['job'].update(i=k+1, name=os.path.basename(files[k]))
-                    if err: STATE['job']['errors'].append(err)
-        else:
-            R.init_worker()
-            for k, a in enumerate(args):
-                err = R.work(a)
-                STATE['job'].update(i=k+1, name=os.path.basename(files[k]))
+        # спершу дочекатися аналізу всієї папки: від нього залежить, що обробляти
+        while not (STATE['scan'] or {}).get('done'):
+            if STATE['gen'] != gen: return
+            sc = STATE['scan'] or {}
+            STATE['job'].update(i=sc.get('i', 0), n=sc.get('n', 0), name=sc.get('name', ''))
+            time.sleep(0.4)
+        shutil.rmtree(tmp, ignore_errors=True); os.makedirs(tmp, exist_ok=True)
+        with LOCK:
+            todo = []
+            for f in STATE['files']:
+                inf = STATE['info'].get(f); s = st_of(f)
+                if not R.wanted(inf['r'] if inf else None, s): continue
+                r = inf['r'] if inf and inf.get('key') == key_of(f) and 'error' not in inf['r'] else None
+                todo.append((f, os.path.join(tmp, os.path.basename(f)), r, s.get('zones'), s.get('adjust'),
+                             tuple(s.get('off') or ()), s.get('rotate') or 0, STATE['wb'].get(f)))
+        STATE['job'] = dict(stage='process', done=False, i=0, n=len(todo), name='', errors=[],
+                            skipped=len(STATE['files'])-len(todo), workers=workers_n())
+        STATE['processed'] = []
+        mp, ex = mapper_for(min(workers_n(), max(len(todo), 1)))
+        try:
+            for k, err in enumerate(mp(R.work, todo)):
+                STATE['job'].update(i=k+1, name=os.path.basename(todo[k][0]))
                 if err: STATE['job']['errors'].append(err)
+                else: STATE['processed'].append(todo[k][0])
+        finally:
+            if ex: ex.shutdown()
         STATE['job'].update(done=True, tmp=tmp)
     except Exception:
         STATE['job'] = dict(stage='process', done=True, error=traceback.format_exc())
 
 
-def save_results(folder):
+def save_results(folder, replace=False, copy_rest=True):
+    """Переносить оброблені фото: у папку результату (оригінали не змінюються)
+    або замість оригіналів. В окрему папку можна докласти й фото без змін — тоді
+    там буде повний набір."""
     src = STATE['src']; tmp = os.path.join(src, TMP_DIR)
-    dst = folder if os.path.isabs(folder) else os.path.join(src, folder)
-    STATE['job'] = dict(stage='save', done=False, i=0, n=0, name='')
+    STATE['job'] = dict(stage='save', done=False, i=0, n=0, name='', replace=bool(replace))
     try:
         names = sorted(os.listdir(tmp)) if os.path.isdir(tmp) else []
-        os.makedirs(dst, exist_ok=True)
-        STATE['job']['n'] = len(names)
-        for k, nm in enumerate(names):
-            shutil.move(os.path.join(tmp, nm), os.path.join(dst, nm))
-            STATE['job'].update(i=k+1, name=nm)
+        if replace:
+            STATE['job']['n'] = len(names)
+            for k, nm in enumerate(names):
+                f = os.path.join(src, nm)
+                os.replace(os.path.join(tmp, nm), f)
+                with LOCK:
+                    # поправки вже всередині файлу: застосувати їх удруге не можна
+                    STATE['settings'][f] = blank()
+                    STATE['info'][f] = dict(r=dict(mark=True, needs=False, changes=[]), key=None)
+                    STATE['wb'].pop(f, None)
+                    if STATE['small'].get('key', (None,))[0] == f: STATE['small'] = {}
+                STATE['job'].update(i=k+1, name=nm)
+            save_settings()
+            dst = src
+        else:
+            dst = folder if os.path.isabs(folder) else os.path.join(src, folder)
+            os.makedirs(dst, exist_ok=True)
+            rest = []
+            if copy_rest:
+                done = set(names)
+                rest = [f for f in STATE['files'] if os.path.basename(f) not in done
+                        and not os.path.exists(os.path.join(dst, os.path.basename(f)))]
+            STATE['job']['n'] = len(names)+len(rest)
+            for k, nm in enumerate(names):
+                shutil.move(os.path.join(tmp, nm), os.path.join(dst, nm))
+                STATE['job'].update(i=k+1, name=nm)
+            for k, f in enumerate(rest):
+                shutil.copy2(f, os.path.join(dst, os.path.basename(f)))     # точна копія, без перестиснення
+                STATE['job'].update(i=len(names)+k+1, name=os.path.basename(f))
         shutil.rmtree(tmp, ignore_errors=True)
-        STATE['job'].update(done=True, dst=dst)
+        STATE['processed'] = []
+        STATE['job'].update(done=True, dst=dst, saved=len(names))
     except Exception:
         STATE['job'] = dict(stage='save', done=True, error=traceback.format_exc())
 
@@ -160,10 +270,16 @@ class H(BaseHTTPRequestHandler):
         self._send(code, json.dumps(obj, ensure_ascii=False).encode('utf-8'))
 
     def _pack(self):
-        return dict(src=STATE['src'], files=[os.path.basename(f) for f in STATE['files']],
-                    settings={os.path.basename(f): STATE['settings'][f] for f in STATE['files']},
-                    ready=bool(STATE['cast']), cores=os.cpu_count() or 2,
-                    workers=STATE.get('workers') or R.default_workers())
+        with LOCK:
+            return dict(src=STATE['src'], files=[os.path.basename(f) for f in STATE['files']],
+                        settings={os.path.basename(f): STATE['settings'][f] for f in STATE['files']},
+                        status={os.path.basename(f): status_of(f) for f in STATE['files']},
+                        scan=STATE['scan'], cores=os.cpu_count() or 2, workers=workers_n(),
+                        tmp=bool(STATE['processed']))
+
+    def _file(self, q):
+        f = os.path.join(STATE['src'] or '', (q.get('file') or [''])[0])
+        return f if f in STATE['settings'] else None
 
     def do_GET(self):
         u = urlparse(self.path); q = parse_qs(u.query)
@@ -179,16 +295,20 @@ class H(BaseHTTPRequestHandler):
                 if not os.path.isdir(p): return self._json(dict(error='Папку не знайдено: '+p), 400)
                 open_folder(p); return self._json(self._pack())
             if u.path in ('/api/before', '/api/after'):
-                f = os.path.join(STATE['src'], q['file'][0])
-                if f not in STATE['settings']: return self._json(dict(error='немає файлу'), 404)
+                f = self._file(q)
+                if not f: return self._json(dict(error='немає файлу'), 404)
                 with LOCK:
                     if u.path == '/api/before':
                         return self._send(200, jpeg(small_image(f)), 'image/jpeg')
                     s = st_of(f)
-                    r = E.with_adjust(analysis(f), s.get('adjust'))
+                    base = analysis(f)
+                    r = E.with_adjust(base, s.get('adjust'), s.get('off'))
                     body = jpeg(E.render(small_image(f), r, zones=s.get('zones')))
-                info = {k: r.get(k) for k in ('temp', 'tint', 'ev', 'shadows', 'highlights',
-                                              'gamma', 'white', 'contrast', 'sat', 'black')}
+                    info = dict(values={k: r.get(k) for k in INFO_KEYS},
+                                auto={k: base.get(k) for k in E.AUTO_KEYS},
+                                changes=base.get('changes') or [], off=list(s.get('off') or []),
+                                needs=bool(base.get('needs')), status=status_of(f),
+                                series=base.get('wb_src') == 'зйомка', error=base.get('error'))
                 return self._send(200, body, 'image/jpeg',
                                   {'X-Info': json.dumps(info), 'X-Token': q.get('tok', [''])[0]})
             if u.path == '/api/progress':
@@ -202,22 +322,33 @@ class H(BaseHTTPRequestHandler):
         data = json.loads(self.rfile.read(int(self.headers.get('Content-Length') or 0)) or b'{}')
         try:
             if u.path == '/api/settings':
-                f = os.path.join(STATE['src'], data['file'])
-                s = st_of(f)
-                for k in ('zones', 'adjust', 'rotate'):
-                    if k in data: s[k] = data[k]
-                save_settings(); return self._json(dict(ok=True))
+                f = os.path.join(STATE['src'] or '', data.get('file') or '')
+                if f not in STATE['settings']: return self._json(dict(error='немає файлу'), 404)
+                with LOCK:
+                    s = st_of(f)
+                    for k in ('zones', 'adjust', 'rotate'):
+                        if k in data: s[k] = data[k]
+                    if 'off' in data: s['off'] = [k for k in data['off'] if k in E.AUTO_KEYS]
+                    if data.get('mode') in ('auto', 'force', 'skip'): s['mode'] = data['mode']
+                save_settings(); return self._json(dict(ok=True, status=status_of(f)))
             if u.path == '/api/apply_all':
-                s = st_of(os.path.join(STATE['src'], data['from']))
-                for f in STATE['files']:
-                    st_of(f)['adjust'] = dict(s.get('adjust', {}))
+                with LOCK:
+                    s = st_of(os.path.join(STATE['src'], data['from']))
+                    for f in STATE['files']:
+                        st_of(f)['adjust'] = dict(s.get('adjust', {}))
+                        st_of(f)['off'] = list(s.get('off') or [])
                 save_settings(); return self._json(self._pack())
             if u.path == '/api/process':
+                if (STATE['job'] or {}).get('done') is False:
+                    return self._json(dict(error='Обробка вже йде'), 409)
                 if data.get('workers'): STATE['workers'] = int(data['workers'])
                 threading.Thread(target=batch, daemon=True).start()
                 return self._json(dict(ok=True))
             if u.path == '/api/save':
-                threading.Thread(target=save_results, args=(data.get('folder') or 'оброблені',),
+                if (STATE['job'] or {}).get('done') is False:
+                    return self._json(dict(error='Зачекайте, поки завершиться обробка'), 409)
+                threading.Thread(target=save_results, args=(data.get('folder') or 'оброблені',
+                                 bool(data.get('replace')), data.get('copy_rest', True) is not False),
                                  daemon=True).start()
                 return self._json(dict(ok=True))
         except Exception:
@@ -270,10 +401,6 @@ def main():
     R.lower_priority()
     register_protocol()
 
-    src = '' if from_site else arg
-    if not src: src = last_folder() or ('' if from_site else os.getcwd())
-    if src and os.path.isdir(src): open_folder(src)
-
     try:
         srv = ThreadingHTTPServer(('127.0.0.1', port), H)
     except OSError:
@@ -281,6 +408,10 @@ def main():
         print('AZART вже запущено:', url)
         if not from_site: webbrowser.open(url)
         return
+
+    src = '' if from_site else arg
+    if not src: src = last_folder() or ('' if from_site else os.getcwd())
+    if src and os.path.isdir(src): open_folder(src)
 
     print('AZART — обробка фото. Відкрийте в браузері:', url)
     # коли запуск іде з сайту, вкладку відкриває сам сайт — інакше їх було б дві
