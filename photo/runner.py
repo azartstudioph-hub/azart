@@ -1,103 +1,129 @@
-"""Обробка цілої папки. Фото однієї зйомки освітлені однаково, тому колір надійніше
-рахувати по серії, ніж по одному кадру. Якщо в папці кілька зйомок, вони визначаються
-автоматично за різкою зміною освітлення між сусідніми (за іменем) фото."""
-import os, sys, glob, json
+"""Обробка цілої папки.
+
+1. Аналіз кожного фото: що йому потрібно (рівні, баланс білого, білий одяг тощо)
+   і чи потрібно взагалі. Фото, яким нічого не потрібно, не обробляються.
+2. Зйомки: фото однієї зйомки освітлені однаково, тому баланс білого для кадрів
+   без білих речей береться від сусідніх кадрів, де білі речі є. Межі зйомок
+   визначаються за різкою зміною освітлення або перервою в часі зйомки.
+3. Обробка лише потрібних фото.
+
+Функції, які виконують процеси-помічники, мають бути саме тут, у звичайному модулі:
+інакше вони не працюють у зібраному .exe."""
+import os, sys, glob, shutil
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np, cv2
 import enhance as E, azart_io as IO
 
-EXT = ('.jpg', '.jpeg', '.JPG', '.JPEG')
+EXT = ('.jpg', '.jpeg')
+SCAN_SIDE = 1400
 
 
 def files_in(src):
-    return sorted(f for f in glob.glob(os.path.join(src, '*')) if f.endswith(EXT))
+    return sorted(f for f in glob.glob(os.path.join(src, '*'))
+                  if f.lower().endswith(EXT) and os.path.isfile(f))
 
 
-def _global_illum(sm, p=6):
-    lin = E.s2l8(sm)
-    mx, mn = E.chmax(lin), E.chmin(lin)
-    v = (mx < 0.92) & (mn > 0.02)
-    if v.sum() < 500: return np.ones(3, np.float32)
-    e = (lin[v]**p).mean(0)**(1/p)
-    return (e/e[1]).astype(np.float32)
+# ------------------------------------------------------------------ аналіз
+def scan_one(a):
+    """Аналіз одного фото. a = (шлях, поворот, вимкнені значення, баланс зйомки або None)."""
+    path, rotate, off, wb = a
+    try:
+        rgb, _ = IO.load(path, rotate, max_side=SCAN_SIDE)
+        r = E.analyze(rgb, off=off, wb=wb, taken=IO.taken_time(path))
+        r['mark'] = IO.has_mark(path)
+        return r
+    except Exception:
+        import traceback
+        return dict(error=traceback.format_exc(limit=2), mark=False, needs=False, changes=[])
 
 
-def scan(path, rotate=0, long_side=1400):
-    rgb, _ = IO.load(path, rotate, max_side=long_side)
-    sm, faces = E.detect_faces(rgb, long_side)
-    chroma, nf = E.skin_chroma(sm, faces)
-    return dict(path=path, sm_size=(sm.shape[1], sm.shape[0]), faces=faces,
-                chroma=chroma, nf=nf, illum=_global_illum(sm))
+def scan_args(path, st, wb=None):
+    st = st or {}
+    return (path, int(st.get('rotate', 0) or 0), tuple(st.get('off') or ()), wb)
 
 
-def segment(scans, jump=0.11, k=2.6):
-    """Межі зйомок: там, де освітлення між сусідніми фото змінюється стрибком."""
-    f = []
-    for s in scans:
-        a = np.log(s['chroma']) if s['chroma'] is not None else np.zeros(3, np.float32)
-        f.append(np.concatenate([a[[0, 2]], np.log(s['illum'])[[0, 2]]*0.6]))
-    f = np.array(f)
-    if len(f) < 3: return [list(range(len(f)))]
-    d = np.linalg.norm(np.diff(f, axis=0), axis=1)
-    thr = max(jump, k*float(np.median(d)))
-    segs, cur = [], [0]
-    for i, v in enumerate(d, 1):
-        if v > thr: segs.append(cur); cur = []
-        cur.append(i)
-    segs.append(cur)
-    return [s for s in segs if s]
+def series(paths, rs):
+    """Баланс білого по зйомках: {шлях: (temp, tint)} для фото, яким його треба взяти від серії.
+    Уже оброблені програмою фото в розрахунку не беруть участі."""
+    idx = [i for i, r in enumerate(rs) if r and 'error' not in r and not r.get('mark')]
+    forced = E.series_wb([rs[i] for i in idx])
+    return {paths[idx[k]]: wb for k, wb in forced.items()}
 
 
-def series_cast(scans, idx, ref=E.REF_SKIN, min_n=3):
-    cs = [E.cast_of(scans[i]['chroma'], ref) for i in idx if scans[i]['chroma'] is not None]
-    if len(cs) < min_n: return None
-    return tuple(float(v) for v in np.median(np.array(cs), 0))
+def scan(paths, settings=None, mapper=map, progress=None, stop=None):
+    """Аналіз усіх фото і балансу по зйомках.
+    Повертає ({шлях: результат analyze}, {шлях: баланс зйомки})."""
+    settings = settings or {}
+    rs = []
+    for k, r in enumerate(mapper(scan_one, [scan_args(p, settings.get(p)) for p in paths])):
+        rs.append(r)
+        if progress: progress(k+1, len(paths), paths[k], r)
+        if stop and stop(): return None, None
+    out = dict(zip(paths, rs))
+    forced = series(paths, rs)
+    if forced:
+        todo = [p for p in paths if p in forced]
+        for p, r in zip(todo, mapper(scan_one, [scan_args(p, settings.get(p), forced[p]) for p in todo])):
+            if 'error' not in r: out[p] = r
+    return out, forced
 
 
-def casts_for(paths, mode='auto', sample=48, log=None):
-    """Колір по зйомках. Для великих папок достатньо вибірки кадрів."""
-    if mode == 'photo': return {p: None for p in paths}
-    step = max(1, len(paths)//sample)
-    pick = list(range(0, len(paths), step))
-    scans = [scan(paths[i]) for i in pick]
-    out = {}
-    segs = segment(scans)
-    if log: log('Зйомок у папці: %d' % len(segs))
-    for si, seg in enumerate(segs):
-        c = series_cast(scans, seg)
-        lo = pick[seg[0]]; hi = pick[seg[-1]]+step if seg[-1]+1 < len(pick) else len(paths)
-        for i in range(lo, hi): out[paths[i]] = c
-        if log and c: log('  зйомка %d: температура %+.3f, тінт %+.3f' % (si+1, c[0], c[1]))
-    for p in paths: out.setdefault(p, None)
-    return out
-
-
-def process_one(path, dst, cast=None, zones=None, adjust=None, rotate=0, p=E.P, ref=E.REF_SKIN):
+# ------------------------------------------------------------------ обробка
+def process_one(path, dst, r=None, zones=None, adjust=None, off=(), rotate=0, wb=None):
     rgb, meta = IO.load(path, rotate)
-    r = E.with_adjust(E.analyze(rgb, ref, p, series_cast=cast), adjust)
-    out = E.render(rgb, r, p, zones)
+    if r is None:
+        r = E.analyze(rgb, off=off, wb=wb, taken=IO.taken_time(path))
+    r = E.with_adjust(r, adjust, off)
+    out = E.render(rgb, r, E.P, zones)
     if dst: IO.save(out, dst, meta)
-    r['file'] = os.path.basename(path)
-    return {k: v for k, v in r.items() if k not in ('face_fix', 'face_box', 'hist')}
+    return r
 
 
-def run(src, dst, mode='auto', settings=None, log=print):
+def work(a):
+    """Одне фото для паралельної обробки: (шлях, куди, аналіз, зони, поправки, вимкнені, поворот, баланс)."""
+    path, dst, r, zones, adjust, off, rotate, wb = a
+    try:
+        process_one(path, dst, r, zones, adjust, off, rotate, wb)
+        return None
+    except Exception:
+        import traceback
+        return '%s: %s' % (os.path.basename(path), traceback.format_exc(limit=1))
+
+
+def manual(st):
+    """Чи має фото ручні поправки або зони."""
+    st = st or {}
+    return bool(st.get('zones')) or any(abs(float(v)) > 1e-9 for v in (st.get('adjust') or {}).values())
+
+
+def wanted(r, st):
+    """Чи обробляти фото: вибір користувача, ручні поправки, інакше — висновок аналізу."""
+    st = st or {}
+    mode = st.get('mode') or 'auto'
+    if mode == 'skip': return False
+    if mode == 'force' or manual(st): return True
+    if not r or r.get('mark') or 'error' in r: return False
+    return bool(r.get('needs'))
+
+
+def run(src, dst, log=print):
+    """Обробка папки без вікна: python runner.py папка папка_результату.
+    Оброблені фото — в dst; фото, яким обробка не потрібна, копіюються туди без змін."""
     files = files_in(src); os.makedirs(dst, exist_ok=True)
     log('Фото в папці: %d' % len(files))
-    cast = casts_for(files, mode, log=log)
-    rep = []
-    for i, f in enumerate(files):
-        st = (settings or {}).get(os.path.basename(f)) or {}
-        r = process_one(f, os.path.join(dst, os.path.basename(f)), cast.get(f),
-                        st.get('zones'), st.get('adjust'), st.get('rotate', 0))
-        rep.append(r)
-        log('  %s  темп %+.3f  тінт %+.3f  EV %+.2f  гамма %.3f  контраст %.2f  насиченість %.2f'
-            % (r['file'], r['temp'], r['tint'], r['ev'], r['gamma'], r['contrast'], r['sat']))
-    json.dump(rep, open(os.path.join(dst, 'report.json'), 'w', encoding='utf-8'),
-              ensure_ascii=False, indent=1)
-    return rep
+    rs, _ = scan(files, progress=lambda i, n, p, r: log('  аналіз %d/%d %s' % (i, n, os.path.basename(p))))
+    for f in files:
+        r = rs[f]; out = os.path.join(dst, os.path.basename(f))
+        if wanted(r, None):
+            process_one(f, out, r)
+            log('  %-24s оброблено: %s' % (os.path.basename(f), ', '.join(r.get('changes') or [])))
+        else:
+            shutil.copy2(f, out)
+            log('  %-24s без змін' % os.path.basename(f))
+    return rs
 
 
+# ------------------------------------------------------------------ процеси
 def lower_priority():
     """Нижчий пріоритет: комп'ютер лишається чутливим, поки йде обробка."""
     try:
@@ -124,18 +150,6 @@ def default_workers():
     return max(1, min(n-1, 4))      # одне ядро лишаємо системі
 
 
-def work(a):
-    """Одне фото для паралельної обробки (має бути у звичайному модулі,
-    інакше не працює у зібраному .exe)."""
-    path, dst, cast, zones, adjust, rotate = a
-    try:
-        process_one(path, dst, cast, zones, adjust, rotate)
-        return None
-    except Exception:
-        import traceback
-        return '%s: %s' % (os.path.basename(path), traceback.format_exc(limit=1))
-
-
 if __name__ == '__main__':
     a = sys.argv[1:]
-    run(a[0], a[1], mode=a[a.index('--mode')+1] if '--mode' in a else 'auto')
+    run(a[0], a[1])
