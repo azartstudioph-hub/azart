@@ -7,9 +7,11 @@
    визначаються за різкою зміною освітлення або перервою в часі зйомки.
 3. Обробка лише потрібних фото.
 
+Фото шукаються і в підпапках: у результаті зберігається та сама структура папок.
+
 Функції, які виконують процеси-помічники, мають бути саме тут, у звичайному модулі:
 інакше вони не працюють у зібраному .exe."""
-import os, sys, glob, shutil
+import os, sys, shutil
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np, cv2
 import enhance as E, azart_io as IO
@@ -18,9 +20,34 @@ EXT = ('.jpg', '.jpeg')
 SCAN_SIDE = 1400
 
 
-def files_in(src):
-    return sorted(f for f in glob.glob(os.path.join(src, '*'))
-                  if f.lower().endswith(EXT) and os.path.isfile(f))
+TMP_DIR = '__azart_tmp'
+
+
+def _natural(s):
+    """Ключ для сортування як у Провіднику: «IMG_2» раніше за «IMG_10»."""
+    import re
+    return [int(t) if t.isdigit() else t.lower().translate(_UA) for t in re.split(r'(\d+)', s)]
+
+
+# українські літери на свої місця в абетці (ґ після г, є після е, і та ї після и)
+_UA = str.maketrans({'ґ': 'г\uffff', 'є': 'е\uffff', 'і': 'и\uffff', 'ї': 'и\uffff\uffff'})
+
+
+def files_in(src, skip=(), deep=True):
+    """Фото папки разом із підпапками (наприклад, папки замовників усередині групи).
+    skip — назви папок першого рівня, які не беремо (папка результату).
+    Порядок: спершу фото самої папки, далі підпапки за назвою."""
+    skip = {str(x).strip().lower() for x in skip if x}
+    out = []
+    for root, dirs, names in os.walk(src):
+        top = os.path.normcase(os.path.abspath(root)) == os.path.normcase(os.path.abspath(src))
+        dirs[:] = sorted((d for d in dirs if not d.startswith('.') and d != TMP_DIR and d.lower() != '$recycle.bin'
+                          and not (top and d.strip().lower() in skip)), key=_natural)
+        out += [os.path.join(root, n) for n in sorted(names, key=_natural)
+                if n.lower().endswith(EXT) and not n.startswith('._')]
+        if not deep: break
+    rel = lambda f: os.path.relpath(f, src)
+    return sorted(out, key=lambda f: (_natural(os.path.dirname(rel(f))), _natural(os.path.basename(f))))
 
 
 # ------------------------------------------------------------------ аналіз
@@ -113,17 +140,20 @@ def wanted(r, st):
 def run(src, dst, log=print):
     """Обробка папки без вікна: python runner.py папка папка_результату.
     Оброблені фото — в dst; фото, яким обробка не потрібна, копіюються туди без змін."""
-    files = files_in(src); os.makedirs(dst, exist_ok=True)
-    log('Фото в папці: %d' % len(files))
-    rs, _ = scan(files, progress=lambda i, n, p, r: log('  аналіз %d/%d %s' % (i, n, os.path.basename(p))))
+    inside = os.path.normcase(os.path.abspath(dst)).startswith(os.path.normcase(os.path.abspath(src))+os.sep)
+    skip = ('оброблені',)+((os.path.basename(os.path.normpath(dst)),) if inside else ())   # папки результатів
+    files = files_in(src, skip=skip)
+    log('Фото в папці й підпапках: %d' % len(files))
+    rs, _ = scan(files, progress=lambda i, n, p, r: log('  аналіз %d/%d %s' % (i, n, os.path.relpath(p, src))))
     for f in files:
-        r = rs[f]; out = os.path.join(dst, os.path.basename(f))
+        r = rs[f]; name = os.path.relpath(f, src); out = os.path.join(dst, name)
+        os.makedirs(os.path.dirname(out), exist_ok=True)
         if wanted(r, None):
             process_one(f, out, r)
-            log('  %-24s оброблено: %s' % (os.path.basename(f), ', '.join(r.get('changes') or [])))
+            log('  %-24s оброблено: %s' % (name, ', '.join(r.get('changes') or [])))
         else:
             shutil.copy2(f, out)
-            log('  %-24s без змін' % os.path.basename(f))
+            log('  %-24s без змін' % name)
     return rs
 
 
