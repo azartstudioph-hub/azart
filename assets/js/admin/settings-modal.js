@@ -48,8 +48,7 @@ export async function openSettingsModal() {
         textField('set-fopName', t('set.fopName'), settings.fopName, { placeholder: t('set.fopNamePh') }),
         textField('set-fopTaxId', t('set.fopTaxId'), settings.fopTaxId, { maxlength: 20, inputmode: 'numeric' }),
         textField('set-fopAddress', t('set.fopAddress'), settings.fopAddress, { maxlength: 200 }),
-        textField('set-fopEmail', t('set.fopEmail'), settings.fopEmail, { type: 'email', maxlength: 100 }),
-        textField('set-deliveryDays', t('set.deliveryDays'), settings.deliveryDays, { maxlength: 3, inputmode: 'numeric' }))));
+        textField('set-fopEmail', t('set.fopEmail'), settings.fopEmail, { type: 'email', maxlength: 100 }))));
   const m = openModal({ title: t('set.title'), body: form, actions: [cancel, save], size: 'md' });
   cancel.addEventListener('click', () => m.close('cancel'));
   save.addEventListener('click', async () => {
@@ -59,7 +58,7 @@ export async function openSettingsModal() {
     try {
       await api('saveSettings', { settings: {
         publicNameMode: pick('publicNameMode'), acceptAfterDeadline: pick('acceptAfterDeadline'), cardPayments: pick('cardPayments'),
-        fopName: val('fopName'), fopTaxId: val('fopTaxId'), fopAddress: val('fopAddress'), fopEmail: val('fopEmail'), deliveryDays: val('deliveryDays')
+        fopName: val('fopName'), fopTaxId: val('fopTaxId'), fopAddress: val('fopAddress'), fopEmail: val('fopEmail')
       } }, { retries: 0 });
       toast(t('set.saved'), 'success');
       m.close('saved');

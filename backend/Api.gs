@@ -352,7 +352,7 @@ function sortByCreatedDesc_(arr) {
 function apiSiteInfo_() {
   var st = getSettings_();
   return {
-    business: { name: st.fopName, taxId: st.fopTaxId, address: st.fopAddress, email: st.fopEmail, deliveryDays: st.deliveryDays },
+    business: { name: st.fopName, taxId: st.fopTaxId, address: st.fopAddress, email: st.fopEmail },
     payments: paymentsInfo_(null)
   };
 }

@@ -67,7 +67,7 @@ test('картка: сервер підписує платіж на суму з 
   assert.match(p.order_id, new RegExp('^' + order.id + '_'));
   assert.equal(p.result_url, 'https://azart.example/order.html?id=1&key=2');
   assert.equal(p.server_url, 'https://script.google.com/macros/s/DEV/exec');
-  assert.match(p.description, /Випускний, Тест Оплата/);
+  assert.match(p.description, /^За фотопослуги: .*Випускний, Тест Оплата$/);
 });
 
 test('чужий ключ замовлення — відмова; адреса повернення лише на сторінку замовлення', () => {
@@ -154,11 +154,11 @@ test('готівка: лише запам’ятовується вибір, п�
 
 test('дані ФОП для сторінок оферти: збереження й перевірка', () => {
   const { call, token } = setup({ mode: 'off' });
-  let r = call('saveSettings', { token, settings: { fopName: '  ФОП  Іваненко Іван ', fopTaxId: '1234567890', fopEmail: 'bad', deliveryDays: '10' } });
+  let r = call('saveSettings', { token, settings: { fopName: '  ФОП  Іваненко Іван ', fopTaxId: '1234567890', fopEmail: 'bad' } });
   assert.equal(r.error.code, 'BAD_REQUEST');
-  r = call('saveSettings', { token, settings: { fopName: '  ФОП  Іваненко Іван ', fopTaxId: '1234567890', fopEmail: 'a@b.ua', fopAddress: 'м. Київ', deliveryDays: '10' } });
+  r = call('saveSettings', { token, settings: { fopName: '  ФОП  Іваненко Іван ', fopTaxId: '1234567890', fopEmail: 'a@b.ua', fopAddress: 'м. Київ' } });
   assert.ok(r.ok);
   const info = call('siteInfo').data;
-  assert.deepEqual(info.business, { name: 'ФОП Іваненко Іван', taxId: '1234567890', address: 'м. Київ', email: 'a@b.ua', deliveryDays: '10' });
+  assert.deepEqual(info.business, { name: 'ФОП Іваненко Іван', taxId: '1234567890', address: 'м. Київ', email: 'a@b.ua' });
   assert.deepEqual(info.payments, { card: false, test: false });
 });

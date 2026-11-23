@@ -133,7 +133,7 @@ test('сторінки умов: посилання у футері, дані Ф
   assert.ok(await admin.locator('.legal-missing').count() > 0);
   assert.equal(await admin.locator('.footer-legal a').count(), 5);
 
-  const r = app.gas.post({ action: 'saveSettings', token: tok(), settings: { fopName: 'ФОП Тестовий Тест Тестович', fopTaxId: '1234567890', fopAddress: 'м. Тест, вул. Тестова, 1', fopEmail: 'test@example.com', deliveryDays: '10' } });
+  const r = app.gas.post({ action: 'saveSettings', token: tok(), settings: { fopName: 'ФОП Тестовий Тест Тестович', fopTaxId: '1234567890', fopAddress: 'м. Тест, вул. Тестова, 1', fopEmail: 'test@example.com' } });
   assert.ok(r.ok);
   for (const p of ['oferta', 'payment', 'returns', 'privacy', 'contacts']) {
     const page = await newPage(browser);
@@ -149,7 +149,12 @@ test('сторінки умов: посилання у футері, дані Ф
   const text = await page.locator('.legal-body').textContent();
   assert.match(text, /ФОП Тестовий Тест Тестович/);
   assert.match(text, /1234567890/);
-  assert.match(text, /протягом 10 робочих днів/);
+  assert.match(text, /передаються Замовнику у погоджений спосіб/);
+  assert.doesNotMatch(text, /робочих днів/);
+  const pay = await newPage(browser);
+  await pay.goto(`${app.url}/payment.html`);
+  await pay.waitForSelector('.legal-sec');
+  assert.match(await pay.locator('.legal-body').textContent(), /Друковані фото: після завершення прийому замовлень за бланком, обробки та друку передаються замовнику у погоджений спосіб\./);
 });
 
 test('параметри сайту: режим оплати й дані ФОП зберігаються з адмінки', async () => {
@@ -158,6 +163,7 @@ test('параметри сайту: режим оплати й дані ФОП 
   await page.waitForSelector('.adm-card');
   await page.getByText('Параметри сайту').click();
   await page.waitForSelector('input[name=cardPayments]');
+  assert.equal(await page.locator('#set-deliveryDays').count(), 0, 'поля днів більше немає');
   assert.equal(await page.locator('input[name=cardPayments][value=test]').isChecked(), true);
   await page.fill('#set-fopEmail', 'не-пошта');
   await page.click('.modal .btn-primary');

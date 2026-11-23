@@ -113,13 +113,11 @@ var SETTINGS_DEFAULTS = {
   // оплата карткою через LiqPay: off - вимкнено; test - тестовий режим (гроші не списуються); on - справжні оплати
   cardPayments: 'off',
   // дані для сторінок «Публічна оферта», «Контакти» тощо
-  fopName: '', fopTaxId: '', fopAddress: '', fopEmail: '',
-  // за скільки робочих днів після закриття бланка готові друковані фото
-  deliveryDays: '14'
+  fopName: '', fopTaxId: '', fopAddress: '', fopEmail: ''
 };
 
 /** Текстові налаштування: найбільша довжина. */
-var SETTINGS_TEXT = { fopName: 120, fopTaxId: 20, fopAddress: 200, fopEmail: 100, deliveryDays: 3 };
+var SETTINGS_TEXT = { fopName: 120, fopTaxId: 20, fopAddress: 200, fopEmail: 100 };
 
 // ---------------------------------------------------------------
 // Властивості скрипту (Project Settings → Script properties)

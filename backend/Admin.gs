@@ -152,7 +152,6 @@ function apiSaveSettings_(req) {
     Object.keys(SETTINGS_TEXT).forEach(function (k) {
       if (!Object.prototype.hasOwnProperty.call(input, k)) return;
       var v = str_(input[k], SETTINGS_TEXT[k]).replace(/\s+/g, ' ').trim();
-      if (k === 'deliveryDays' && v && !/^\d{1,3}$/.test(v)) fail_('BAD_REQUEST', 'Кількість днів має бути числом');
       if (k === 'fopEmail' && v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) fail_('BAD_REQUEST', 'Некоректна електронна адреса');
       put(k, v);
     });
