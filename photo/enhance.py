@@ -67,14 +67,17 @@ P = dict(
     light_min=9.0, light_min2=14.0, light_k=0.7, light_cap=0.6, light_r2=0.6,
     # --- технічне ---
     map_scale=0.25, tile_rows=384, analysis_side=1400,
+    # --- червоні очі: почервоніння зіниці (r - max(g, b))/r, пошук біля точки ока ---
+    re_red=0.40, re_bright=105, re_win=0.16, re_near=0.10, re_max=0.10, re_fill=0.35, re_crowd=0.30, re_min_face=24,
+    re_dark=0.45,
     # --- ручні локальні тіні / світла (лише з повзунків) ---
     sh_band=(0.15, 0.26, 0.42, 0.62), hl_band=(0.62, 0.95),
 )
 
 # назви автоматичних значень, які можна вимкнути
-AUTO_KEYS = ('white', 'black', 'ev', 'gamma', 'temp', 'tint', 'whites', 'whites_hi', 'guard', 'light')
+AUTO_KEYS = ('white', 'black', 'ev', 'gamma', 'temp', 'tint', 'whites', 'whites_hi', 'guard', 'light', 'redeye')
 # без чого фото вважається «не потребує обробки»: сама лише чорна точка — не привід
-MAJOR = ('white', 'ev', 'gamma', 'temp', 'tint', 'whites', 'whites_hi', 'guard', 'light')
+MAJOR = ('white', 'ev', 'gamma', 'temp', 'tint', 'whites', 'whites_hi', 'guard', 'light', 'redeye')
 
 # ------------------------------------------------------------------ базові функції
 def s2l(x): return np.where(x <= 0.04045, x/12.92, ((x+0.055)/1.055)**2.4).astype(np.float32)
@@ -168,7 +171,8 @@ def detect_faces(rgb8, long_side=1400, thr=0.70, min_px=22):
         for d in f:
             if d[14] < thr or d[2] < min_px: continue
             faces.append(dict(sbox=tuple(float(v) for v in d[:4]),
-                              box=tuple(float(v)/s for v in d[:4]), score=float(d[14])))
+                              box=tuple(float(v)/s for v in d[:4]), score=float(d[14]),
+                              eyes=((float(d[4]), float(d[5])), (float(d[6]), float(d[7])))))
     return sm, faces
 
 
@@ -692,7 +696,7 @@ def analyze(rgb8, p=P, off=(), wb=None, taken=None, **_):
     boxes = [(f['sbox'][0]/ws, f['sbox'][1]/hs, f['sbox'][2]/ws, f['sbox'][3]/hs) for f in faces]
     r = dict(v=VERSION, faces=len(faces), boxes=[tuple(round(v, 4) for v in b) for b in boxes],
              temp=0.0, tint=0.0, ev=0.0, white=255.0, black=0.0, gamma=1.0,
-             whites=0.0, whites_hi=0.0, guard=0.0, light=None,
+             whites=0.0, whites_hi=0.0, guard=0.0, light=None, redeye=[],
              shadows=0.0, highlights=0.0, contrast=0.0, sat=0.0)
     sidx = skin_index(sm, faces)
     allidx = _merge_idx(sidx)
@@ -825,7 +829,11 @@ def analyze(rgb8, p=P, off=(), wb=None, taken=None, **_):
         r['face_hot'] = round(100*hot, 1)
         if r['face_hot'] >= p['guard_frac']: r['guard'] = 1.0
 
-    # 7) що змінюється
+    # 7) червоні очі від спалаху
+    if 'redeye' not in off and faces:
+        r['redeye'] = find_redeye(rgb8, sm.shape, faces, p)
+
+    # 8) що змінюється
     r['changes'] = changes_of(r, p)
     r['needs'] = any(k in MAJOR for k in r['changes'])
     return r
@@ -843,6 +851,7 @@ def changes_of(r, p=P):
     if r.get('whites_hi'): ch.append('whites_hi')
     if r.get('guard'): ch.append('guard')
     if r.get('light'): ch.append('light')
+    if r.get('redeye'): ch.append('redeye')
     return ch
 
 
@@ -929,9 +938,141 @@ def _wmedian(v, w):
     return float(v[i])
 
 
+# ------------------------------------------------------------------ червоні очі
+def redness(rgb):
+    """Почервоніння 0..1. Червона зіниця від спалаху — чисто червона: зелений значно
+    слабший за червоний, а синій приблизно як зелений (0.6…0.9). Шкіра, повіки й
+    рожеві куточки очей — тепліші: синій помітно слабший за зелений, тож майже 0."""
+    f = rgb.astype(np.float32)
+    r, g, b = f[..., 0], f[..., 1], f[..., 2]
+    base = (r-np.maximum(g, b))/(r+1.0)
+    gate = ss(b/(g+1.0), 0.45, 0.65)*(1-ss(g/(r+1.0), 0.42, 0.58))
+    return base*gate
+
+
+def find_redeye(rgb8, sm_shape, faces, p=P):
+    """Червоні зіниці біля точок очей кожного обличчя. Повертає [(x, y, радіус)]:
+    центр — частки кадру, радіус — частка ширини кадру."""
+    H, W = rgb8.shape[:2]
+    k = W/float(sm_shape[1])
+    out = []
+    for f in faces:
+        fw = f['sbox'][2]*k
+        if fw < p['re_min_face']: continue
+        for ex, ey in f.get('eyes') or ():
+            ex, ey = ex*k, ey*k
+            R = max(int(round(fw*p['re_win'])), 4)
+            x0, y0 = max(int(ex)-R, 0), max(int(ey)-R, 0)
+            x1, y1 = min(int(ex)+R+1, W), min(int(ey)+R+1, H)
+            if x1-x0 < 3 or y1-y0 < 3: continue
+            roi = rgb8[y0:y1, x0:x1]
+            rd = redness(roi)
+            red = (rd > p['re_red']) & (roi[..., 0] > 50)
+            # червоне світло сцени: червоне майже все навколо — це не очі
+            if not red.any() or red.mean() > p['re_crowd']: continue
+            n, lab, st, cen = cv2.connectedComponentsWithStats(red.astype(np.uint8), 8)
+            best = None
+            for i in range(1, n):
+                area = int(st[i, cv2.CC_STAT_AREA])
+                cx, cy = cen[i]
+                if np.hypot(cx+x0-ex, cy+y0-ey) > max(fw*p['re_near'], 2.0): continue
+                yy, xx = np.nonzero(lab == i)
+                rmax = float(np.sqrt(((xx-cx)**2+(yy-cy)**2).max()))+0.5
+                if rmax > fw*p['re_max'] or area < 3: continue
+                if area/(np.pi*rmax*rmax) < p['re_fill']: continue      # не кругла пляма
+                if float(rd[yy, xx].mean()) < p['re_red']+0.08: continue
+                # червоне око від спалаху яскраве; темно-червона зіниця в теплому світлі — ні
+                if float(roi[yy, xx, 0].mean()) < p['re_bright']: continue
+                if best is None or area > best[0]: best = (area, cx+x0, cy+y0, rmax)
+            if best:
+                _, cx, cy, rr = best
+                out.append((round(float(cx)/W, 5), round(float(cy)/H, 5), round(max(float(rr)*1.35, 1.5)/W, 5)))
+    return out
+
+
+def apply_redeye(out8, spots, p=P, manual=False):
+    """Прибирає червоне в кругах spots [(x, y, радіус)] як інструмент «Червоні очі» в Photoshop:
+    червоні пікселі стають темно-сірими (зіниця), відблиск і райдужка не змінюються."""
+    if not spots: return out8
+    H, W = out8.shape[:2]
+    lo, hi = (0.10, 0.30) if manual else (0.20, 0.40)
+    for x, y, rad in spots:
+        cx, cy, R = x*W, y*H, max(rad*W, 1.0)
+        x0, y0 = max(int(cx-1.6*R), 0), max(int(cy-1.6*R), 0)
+        x1, y1 = min(int(cx+1.6*R)+2, W), min(int(cy+1.6*R)+2, H)
+        if x1-x0 < 2 or y1-y0 < 2: continue
+        roi = out8[y0:y1, x0:x1].astype(np.float32)
+        yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32)
+        d = np.hypot(xx+0.5-cx, yy+0.5-cy)/R
+        m = ss(redness(roi), lo, hi)*(1-ss(d, 1.0, 1.4))
+        if R > 4: m = cv2.GaussianBlur(m, (0, 0), max(0.5, R*0.06))
+        if m.max() < 0.02: continue
+        v = (roi[..., 1]+roi[..., 2])*0.5*(1-p['re_dark'])          # зіниця: темна і без кольору
+        new = roi*(1-m[..., None])+v[..., None]*m[..., None]
+        out8 = out8 if out8.flags.writeable else out8.copy()
+        out8[y0:y1, x0:x1] = np.clip(new+0.5, 0, 255).astype(np.uint8)
+    return out8
+
+
+def eye_spots(zones):
+    """Ручні позначки «червоне око» (зони shape='eye') як круги (x, y, радіус)."""
+    out = []
+    for z in zones or []:
+        if z.get('shape') != 'eye': continue
+        out.append((float(z['x'])+float(z['w'])/2, float(z['y'])+float(z['h'])/2, max(float(z['w']), 1e-4)/2))
+    return out
+
+
+# ------------------------------------------------------------------ кольори окремо (як HSL у Lightroom)
+HSL_COLORS = ('red', 'orange', 'yellow', 'green', 'aqua', 'blue', 'purple', 'magenta')
+HSL_HUES = np.array([0, 30, 60, 120, 180, 240, 275, 315], np.float32)   # центри кольорів, градуси
+HSL_KINDS = ('s', 'h', 'l')       # насиченість, відтінок, яскравість; ключі поправок: hsl_s_red тощо
+
+
+def hsl_of(adj):
+    """Поправки кольорів із ручних поправок: {вид: масив 8 значень -1..1} або None."""
+    if not adj: return None
+    out = {}
+    for k in HSL_KINDS:
+        v = np.array([float(np.clip(float(adj.get('hsl_%s_%s' % (k, c), 0) or 0), -1, 1)) for c in HSL_COLORS], np.float32)
+        if np.abs(v).max() > 1e-3: out[k] = v.tolist()
+    return out or None
+
+
+def _hue_weights(H):
+    """Частка кожного з 8 кольорів для відтінку H (градуси): лінійно між сусідніми центрами."""
+    c = np.append(HSL_HUES, 360.0)
+    i = np.clip(np.searchsorted(c, H, side='right')-1, 0, 7)
+    t = (H-c[i])/(c[i+1]-c[i])
+    return i, (i+1) % 8, t.astype(np.float32)
+
+
+def apply_hsl(srgb, hsl):
+    """Насиченість, відтінок і яскравість окремих кольорів. Сірі й майже сірі
+    пікселі не змінюються, тож шкіра змінюється лише разом зі своїм кольором."""
+    hsv = cv2.cvtColor(np.ascontiguousarray(np.clip(srgb, 0, 1), np.float32), cv2.COLOR_RGB2HSV)
+    H, S = hsv[..., 0], hsv[..., 1]
+    i0, i1, t = _hue_weights(H)
+    amt = ss(S, 0.04, 0.22)
+    def val(k):
+        a = np.asarray(hsl[k], np.float32)
+        return (a[i0]*(1-t)+a[i1]*t)*amt
+    if 'h' in hsl:
+        hsv[..., 0] = (H+val('h')*30.0) % 360.0          # до ±30° у бік сусіднього кольору
+        srgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+    if 's' in hsl:
+        f = 1+val('s')
+        yl = (srgb @ LUMA8)[..., None]
+        srgb = yl+(srgb-yl)*f[..., None]
+    if 'l' in hsl:
+        srgb = srgb*np.exp2(val('l')*0.6)[..., None]
+    return srgb
+
+
 # ------------------------------------------------------------------ відтворення
 def _manual_float(r, zones):
-    return bool(r.get('light') or zones or abs(r.get('shadows', 0)) > 1e-3
+    zones = [z for z in zones or [] if z.get('shape') != 'eye']
+    return bool(r.get('light') or zones or r.get('hsl') or abs(r.get('shadows', 0)) > 1e-3
                 or abs(r.get('highlights', 0)) > 1e-3 or abs(r.get('sat', 0)) > 1e-3)
 
 
@@ -943,57 +1084,117 @@ def local_gain(Bs, r, p=P):
     return g-r.get('highlights', 0.0)*ss(Bs, e, f)
 
 
-def zone_gain(zones, shape):
+# параметри зони: те, що можна змінити всередині неї
+ZONE_KEYS = ('ev', 'contrast', 'shadows', 'highlights', 'temp', 'tint', 'sat')
+ZONE_LIMITS = dict(ev=(-2, 2), contrast=(-.6, .8), shadows=(-1, 2), highlights=(-1, 2),
+                   temp=(-.4, .4), tint=(-.4, .4), sat=(-.8, .8))
+
+
+def zone_mask(z, shape):
+    """Маска однієї зони 0..1 на карті shape (h, w). Зона — рамка x, y, w, h (частки кадру),
+    повернута на a градусів за годинниковою стрілкою навколо центру; усередині рамки —
+    прямокутник, овал або довільний контур «ласо» (pts — точки в частках рамки)."""
     hs, ws = shape
+    bw, bh = max(float(z['w'])*ws, 1.0), max(float(z['h'])*hs, 1.0)
+    cx, cy = (float(z['x'])+float(z['w'])/2)*ws, (float(z['y'])+float(z['h'])/2)*hs
+    fe = float(np.clip(float(z.get('feather', 0.3)), 0.0, 1.0))
+    t = np.deg2rad(float(z.get('a', 0.0) or 0.0)); cs, sn = float(np.cos(t)), float(np.sin(t))
+    shape_ = z.get('shape', 'rect')
+    if shape_ == 'lasso':
+        pts = np.asarray(z.get('pts') or [], np.float32).reshape(-1, 2)
+        if len(pts) < 3: return np.zeros(shape, np.float32)
+        lx, ly = (pts[:, 0]-0.5)*bw, (pts[:, 1]-0.5)*bh
+        P = np.stack([cx+lx*cs-ly*sn, cy+lx*sn+ly*cs], 1)
+        S = 8                                     # контур малюємо з точністю до 1/8 пікселя
+        m = np.zeros(shape, np.uint8)
+        cv2.fillPoly(m, [np.round(P*S).astype(np.int32)], 255, cv2.LINE_AA, shift=3)
+        m = m.astype(np.float32)/255.0
+        sig = fe*min(bw, bh)*0.35
+        if sig > 0.3: m = cv2.GaussianBlur(m, (0, 0), sig, borderType=cv2.BORDER_REPLICATE)
+        return m
     yy, xx = np.mgrid[0:hs, 0:ws].astype(np.float32)
-    ev = np.zeros(shape, np.float32); sat = np.zeros(shape, np.float32)
+    xx += 0.5; yy += 0.5
+    dx, dy = xx-cx, yy-cy
+    u = (cs*dx+sn*dy)/bw+0.5          # координати всередині рамки 0..1
+    v = (-sn*dx+cs*dy)/bh+0.5
+    if shape_ == 'ellipse':
+        dd = np.sqrt((2*u-1)**2+(2*v-1)**2)
+        return 1-ss(dd, max(1-fe, 0.05), 1.0)
+    f = max(fe, 1e-3)
+    return ss(u, -f, f)*(1-ss(u, 1-f, 1+f))*ss(v, -f, f)*(1-ss(v, 1-f, 1+f))
+
+
+def zone_maps(zones, shape):
+    """Карти поправок від усіх зон: {параметр: карта} лише для тих, що є."""
+    out = {}
     for z in zones or []:
-        x, y, w, h = z['x']*ws, z['y']*hs, z['w']*ws, z['h']*hs
-        fe = float(z.get('feather', 0.3))
-        if z.get('shape', 'rect') == 'ellipse':
-            dd = np.sqrt(((xx-(x+w/2))/max(w/2, 1))**2+((yy-(y+h/2))/max(h/2, 1))**2)
-            m = 1-ss(dd, max(1-fe, 0.05), 1.0)
-        else:
-            fx, fy = max(w*fe, 1), max(h*fe, 1)
-            m = (ss(xx, x-fx, x+fx)*(1-ss(xx, x+w-fx, x+w+fx))
-                 * ss(yy, y-fy, y+fy)*(1-ss(yy, y+h-fy, y+h+fy)))
-        ev += m*float(z.get('ev', 0.0)); sat += m*float(z.get('sat', 0.0))
-    return ev, sat
+        if z.get('shape') == 'eye': continue
+        vals = {k: float(np.clip(float(z.get(k, 0) or 0), *ZONE_LIMITS[k])) for k in ZONE_KEYS}
+        if not any(abs(v) > 1e-4 for v in vals.values()): continue
+        m = zone_mask(z, shape)
+        for k, v in vals.items():
+            if abs(v) <= 1e-4: continue
+            out[k] = out[k]+m*v if k in out else m*v
+    return out
+
+
+def zone_gain(zones, shape):
+    """Яскравість і насиченість від зон (для сумісності)."""
+    zm = zone_maps(zones, shape)
+    return zm.get('ev', np.zeros(shape, np.float32)), zm.get('sat', np.zeros(shape, np.float32))
 
 
 def _float_maps(rgb8, r, p, zones, lut_lin):
-    """Повільні карти (EV і насиченість) для ручних тіней/світел, зон і вирівнювання світла."""
+    """Повільні карти на весь кадр: EV (ручні тіні/світла, зони) і поправки зон
+    (насиченість, контраст, температура, тінт)."""
     H, W = rgb8.shape[:2]
     sw, sh = max(int(W*p['map_scale']), 48), max(int(H*p['map_scale']), 48)
-    small = cv2.resize(rgb8, (sw, sh), interpolation=cv2.INTER_AREA)
-    ev = np.zeros((sh, sw), np.float32)
-    if abs(r.get('shadows', 0)) > 1e-3 or abs(r.get('highlights', 0)) > 1e-3:
+    zm = zone_maps(zones, (sh, sw))
+    ev = zm.pop('ev', np.zeros((sh, sw), np.float32))
+    zsh, zhl = zm.pop('shadows', None), zm.pop('highlights', None)
+    gsh, ghl = float(r.get('shadows', 0)), float(r.get('highlights', 0))
+    if abs(gsh) > 1e-3 or abs(ghl) > 1e-3 or zsh is not None or zhl is not None:
+        small = cv2.resize(rgb8, (sw, sh), interpolation=cv2.INTER_AREA)
         Y = np.maximum((lut_lin[0][small[..., 0]]*LUMW[0]+lut_lin[1][small[..., 1]]*LUMW[1]
                         + lut_lin[2][small[..., 2]]*LUMW[2]), 1e-5)
         Lg = np.log2(Y)
         Bs = l2s(np.exp2(guided(Lg, max(6, int(min(Lg.shape)*0.07)), 0.10)))
-        ev += local_gain(Bs, r, p)
-    zev, zsat = zone_gain(zones, (sh, sw))
-    ev += zev
-    gain = cv2.resize(np.exp2(ev), (W, H), interpolation=cv2.INTER_LINEAR) if np.abs(ev).max() > 1e-4 else None
-    zs = cv2.resize(zsat, (W, H), interpolation=cv2.INTER_LINEAR) if np.abs(zsat).max() > 1e-4 else None
-    return gain, zs
+        ev = ev+local_gain(Bs, dict(shadows=gsh if zsh is None else gsh+zsh,
+                                    highlights=ghl if zhl is None else ghl+zhl), p)
+    up = lambda m: cv2.resize(m.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
+    maps = {k: up(v) for k, v in zm.items() if np.abs(v).max() > 1e-4}
+    gain = up(np.exp2(ev)) if np.abs(ev).max() > 1e-4 else None
+    return gain, maps
 
 
-def _float_block(b8, y0, H, gain, zsat, r, lut_lin):
+def _float_block(b8, y0, H, gain, zm, r, lut_lin):
     lin = np.empty(b8.shape, np.float32)
     for c in range(3): lin[..., c] = lut_lin[c][b8[..., c]]
     lm = light_map(b8.shape[:2], r.get('light'), y0, H)
     if lm is not None: lin *= np.exp2(lm)[..., None]
     if gain is not None: lin *= gain[..., None]
+    zt, zn = zm.get('temp'), zm.get('tint')
+    if zt is not None or zn is not None:
+        # температура й тінт зони — як у corr_gains, але для кожного пікселя
+        dt = zt if zt is not None else np.zeros(b8.shape[:2], np.float32)
+        dn = zn if zn is not None else np.zeros(b8.shape[:2], np.float32)
+        g0, g1, g2 = np.exp(dt), np.exp(-dn), np.exp(-dt)
+        k = 1.0/(g0*LUMW[0]+g1*LUMW[1]+g2*LUMW[2])      # яскравість зони не змінюється
+        lin[..., 0] *= g0*k; lin[..., 1] *= g1*k; lin[..., 2] *= g2*k
     srgb = levels(l2s(lin), r)
     del lin
+    zc = zm.get('contrast')
+    if zc is not None:
+        t = np.clip(srgb, 0, 1)
+        srgb = srgb+zc[..., None]*((0.5-np.sin(np.arcsin(1-2*t)/3))-t)
     s = float(r.get('sat', 0.0))
+    zsat = zm.get('sat')
     if abs(s) > 1e-3 or zsat is not None:
         f = 1+s*(1-ss(chmax(srgb), 0.85, 0.99)) if abs(s) > 1e-3 else 1.0
         if zsat is not None: f = f+zsat
         yl = (srgb @ LUMA8)[..., None]
         srgb = yl+(srgb-yl)*np.asarray(f, np.float32)[..., None] if np.ndim(f) else yl+(srgb-yl)*f
+    if r.get('hsl'): srgb = apply_hsl(srgb, r['hsl'])
     np.clip(srgb, 0, 1, out=srgb); srgb *= 255.0; srgb += 0.5
     return srgb.astype(np.uint8)
 
@@ -1007,13 +1208,13 @@ def render(rgb8, r, p=P, zones=None):
         out = np.empty_like(rgb8)
         for c in range(3): out[..., c] = cv2.LUT(np.ascontiguousarray(rgb8[..., c]), lut8[c])
     else:
-        gain, zsat = _float_maps(rgb8, r, p, zones, lut_lin)
+        gain, zm = _float_maps(rgb8, r, p, zones, lut_lin)
         out = np.empty((H, W, 3), np.uint8)
         rows = max(p['tile_rows'], 32)
         for y0 in range(0, H, rows):
             y1 = min(y0+rows, H)
             out[y0:y1] = _float_block(rgb8[y0:y1], y0, H, None if gain is None else gain[y0:y1],
-                                      None if zsat is None else zsat[y0:y1], r, lut_lin)
+                                      {k: v[y0:y1] for k, v in zm.items()}, r, lut_lin)
     if r.get('whites') or r.get('whites_hi'):
         small = small_for_mask(out, p).astype(np.float32)/255.0
         mk = whites_mask(small, r.get('boxes') or [], p)
@@ -1022,6 +1223,9 @@ def render(rgb8, r, p=P, zones=None):
             if r.get('whites'): out = apply_whites(out, mk, p)
     if r.get('guard') and r.get('boxes'):
         out = apply_guard(out, r['boxes'], p)
+    if r.get('redeye'): out = apply_redeye(out, r['redeye'], p)
+    es = eye_spots(zones)
+    if es: out = apply_redeye(out, es, p, manual=True)
     return out
 
 
@@ -1043,6 +1247,7 @@ def with_adjust(r, adj, off=()):
         elif k in ('whites', 'whites_hi', 'guard'): r[k] = 0.0
         elif k == 'ev': r['ev'] = 0.0
         elif k == 'light': r['light'] = None
+        elif k == 'redeye': r['redeye'] = []
     if adj:
         for k, (lo, hi) in ADJ_LIMITS.items():
             if k in adj: r[k] = float(np.clip(float(r.get(k, 0))+float(adj[k]), lo, hi))
@@ -1053,6 +1258,7 @@ def with_adjust(r, adj, off=()):
         if 'mid' in adj:
             r['gamma'] = float(np.clip(float(r.get('gamma', 1.0))-float(adj['mid']), 0.5, 1.6))
         if r['black'] > r['white']-20: r['black'] = max(r['white']-20, 0.0)
+        r['hsl'] = hsl_of(adj)
     r['changes'] = changes_of(r)
     manual = bool(adj) and any(abs(float(v)) > 1e-9 for v in adj.values())
     r['needs'] = manual or any(k in MAJOR for k in r['changes'])

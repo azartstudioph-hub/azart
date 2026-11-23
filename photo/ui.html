@@ -2,7 +2,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AZART — обробка фото</title>
 <style>
-:root{--bg:#14161a;--panel:#1d2026;--line:#2e333c;--txt:#e7e9ee;--dim:#9aa3b2;--acc:#ff9d3c;--acc2:#4aa8ff;--ok:#5ccf8a;--bad:#ff7a7a}
+:root{--bg:#14161a;--panel:#1d2026;--line:#2e333c;--txt:#e7e9ee;--dim:#9aa3b2;--acc:#ff9d3c;--acc2:#4aa8ff;--ok:#5ccf8a;--bad:#ff7a7a;--eye:#ff5a6e}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.45 "Segoe UI",system-ui,sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
 header{display:flex;gap:8px;align-items:center;padding:9px 13px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
@@ -17,17 +17,29 @@ button.pri{background:var(--acc);border-color:var(--acc);color:#241303;font-weig
 button.on{background:var(--acc2);border-color:var(--acc2);color:#04121f;font-weight:600}
 button.warn{background:#5c2b33;border-color:#7a3540}
 button:disabled{opacity:.45;cursor:default}
+button.ic{padding:6px 9px}
 label.chk{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--dim);white-space:nowrap;cursor:pointer}
 label.chk input{accent-color:var(--acc);margin:0}
+kbd{font:11px/1 ui-monospace,Consolas,monospace;background:#0f1115;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:2px 5px;color:var(--txt)}
 main{flex:1;display:flex;min-height:0}
-#left{width:200px;border-right:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;min-height:0}
+/* ---------- панелі */
+.ptop{display:flex;align-items:center;gap:6px;justify-content:space-between}
+.ptitle{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim)}
+.pbtn{padding:2px 8px;font-size:13px;line-height:1.3}
+#left{width:220px;border-right:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;min-height:0;flex:none}
 #lhead{padding:8px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
 #lhead select{width:100%}
-#counts{font-size:12px;color:var(--dim);line-height:1.5}
-#list{flex:1;overflow:auto}
-#list div{padding:7px 10px;cursor:pointer;border-bottom:1px solid #23272f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px;display:flex;align-items:center;gap:7px}
-#list div:hover{background:#262b33}
-#list div.sel{background:var(--acc);color:#241303;font-weight:600}
+#counts,#picked{font-size:12px;color:var(--dim);line-height:1.5}
+#picked b{color:var(--txt)}
+#list{flex:1;overflow:auto;outline:none}
+#list .it{padding:6px 10px;cursor:pointer;border-bottom:1px solid #23272f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px;display:flex;align-items:center;gap:7px;user-select:none}
+#list .it.in{padding-left:22px}
+#list .it:hover{background:#262b33}
+#list .it.pk{background:#3a3222}
+#list .it.sel{background:var(--acc);color:#241303;font-weight:600}
+#list .dir{padding:7px 10px 5px;font-size:12px;color:var(--dim);background:#181b20;border-bottom:1px solid #23272f;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;user-select:none;position:sticky;top:0;z-index:1}
+#list .dir:hover{color:var(--txt)}
+#list .dir small{float:right;opacity:.8}
 #list i{flex:none;width:9px;height:9px;border-radius:50%;background:#555;display:inline-block;font-style:normal}
 #list .st-need i{background:var(--acc)}
 #list .st-ok i{background:transparent;border:1.5px solid #6b7380}
@@ -38,25 +50,91 @@ main{flex:1;display:flex;min-height:0}
 #list .skip{opacity:.55}
 #list .skip i{background:transparent;border:1.5px dashed #6b7380}
 #list .sel i{box-shadow:0 0 0 2px #241303}
-#list div.has::after{content:"✎";margin-left:auto;font-size:11px;color:var(--acc2)}
-#list div.sel.has::after{color:#241303}
+#list .it.has::after{content:"✎";margin-left:auto;font-size:11px;color:var(--acc2)}
+#list .it.sel.has::after{color:#241303}
 @keyframes pulse{50%{opacity:.35}}
+body.lcol #left{width:34px}
+body.lcol #left>*:not(#lhead),body.lcol #lhead>*:not(.ptop),body.lcol #left .ptitle{display:none}
+body.lcol #lhead{padding:8px 3px;border:0}
+#side{width:310px;border-left:1px solid var(--line);background:var(--panel);overflow:auto;padding:11px;flex:none;display:flex;flex-direction:column}
+#side>*{flex:none}
+body.rcol #side{width:34px;padding:8px 3px;overflow:hidden}
+body.rcol #side>*:not(.ptop),body.rcol #side .ptitle{display:none}
+/* ---------- перегляд */
 #stage{flex:1;display:flex;flex-direction:column;min-width:0;background:#0d0f12}
-#bar{display:flex;gap:7px;align-items:center;padding:7px 11px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap}
-#wrap{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;overflow:hidden;position:relative;padding:10px;min-height:0}
-#holder,#holder2{position:relative;line-height:0}
-#holder2{display:none}
-img.view{max-width:100%;max-height:calc(100vh - 150px);display:block;user-select:none;-webkit-user-drag:none}
-body.split img.view{max-width:49vw}
-body.split #holder2{display:block}
-.cap{position:absolute;left:6px;top:6px;background:#000a;color:#fff;font-size:11px;padding:2px 7px;border-radius:5px;line-height:1.6}
-.zone{position:absolute;border:1.5px solid var(--acc2);background:rgba(74,168,255,.09);cursor:move}
-.zone.el{border-radius:50%}
-.zone.sel{border-color:var(--acc);background:rgba(255,157,60,.13)}
-.zone .hd{position:absolute;right:-6px;bottom:-6px;width:12px;height:12px;background:var(--acc);border-radius:3px;cursor:nwse-resize}
-#side{width:300px;border-left:1px solid var(--line);background:var(--panel);overflow:auto;padding:11px}
+#bar{display:flex;gap:6px;align-items:center;padding:7px 11px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap}
+#bar .sep{width:1px;height:22px;background:var(--line);margin:0 1px}
+#bar{gap:5px}
+#bar button{padding:5px 9px;font-size:12.5px}
+#bar .grow{flex:1}
+#zoomLbl{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums;min-width:58px;text-align:right;cursor:pointer}
+#wrap{flex:1;display:flex;gap:8px;overflow:hidden;position:relative;padding:8px;min-height:0}
+.vp{position:relative;flex:1;overflow:hidden;min-width:0}
+#vp2{display:none}
+body.split #vp2{display:block}
+#holder,#holder2{position:absolute;line-height:0;left:0;top:0}
+img.view{width:100%;height:100%;display:block;user-select:none;-webkit-user-drag:none}
+body.zoomed .vp{cursor:grab}
+body.panning,body.panning *{cursor:grabbing!important}
+body.space .vp{cursor:grab}
+.cap{position:absolute;left:6px;top:6px;background:#000a;color:#fff;font-size:11px;padding:2px 7px;border-radius:5px;line-height:1.6;z-index:6;pointer-events:none}
+#capB,#capA{display:none}
+body.wipe #cap{display:none}
+body.wipe #capB,body.wipe #capA{display:block}
+#capA{left:auto;right:6px}
+body.wipe.wh #capA{right:auto;left:6px;top:auto;bottom:6px}
+#imgB{position:absolute;inset:0;width:100%;height:100%;display:none;pointer-events:none;z-index:1}
+body.wipe #imgB{display:block}
+#wipe{position:absolute;display:none;z-index:5;cursor:ew-resize}
+body.wipe #wipe{display:block}
+#wipe{top:0;bottom:0;width:0;border-left:2px solid #fff;box-shadow:0 0 0 1px #0007}
+#wipe::before{content:"";position:absolute;left:-9px;width:18px;top:0;bottom:0}
+#wipe b{position:absolute;left:-15px;top:calc(50% - 14px);width:28px;height:28px;border-radius:50%;background:#fff;color:#111;font:600 14px/28px sans-serif;text-align:center;box-shadow:0 1px 4px #0008}
+body.wh #wipe{left:0!important;right:0;top:auto;bottom:auto;width:auto;height:0;border-left:0;border-top:2px solid #fff;cursor:ns-resize}
+body.wh #wipe::before{left:0;right:0;width:auto;top:-9px;height:18px;bottom:auto}
+body.wh #wipe b{left:calc(50% - 14px);top:-15px}
+/* зони: лише контур, без заливки */
+.zone{position:absolute;border:1.5px solid var(--acc2);box-shadow:0 0 0 1px #0006,inset 0 0 0 1px #0004;cursor:move;z-index:3;transform-origin:50% 50%}
+.zone.z-ellipse,.zone.z-eye{border-radius:50%}
+.zone.z-eye{border:1.5px dashed var(--eye)}
+.zone.z-lasso{border:1px dashed transparent;box-shadow:none}
+.zone.z-lasso.sel{border-color:#ffffff55}
+.zone svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
+.zone svg .bk{fill:none;stroke:#0008;stroke-width:3;vector-effect:non-scaling-stroke}
+.zone svg .fg{fill:none;stroke:var(--acc2);stroke-width:1.5;vector-effect:non-scaling-stroke}
+.zone.sel{border-color:var(--acc)}
+.zone.sel svg .fg{stroke:var(--acc)}
+.zone .h{position:absolute;width:10px;height:10px;background:var(--acc);border:1px solid #241303;border-radius:2px}
+.zone.z-eye .h{width:7px;height:7px;border-radius:50%}
+.zone.z-eye .nw{left:-4px;top:-4px}.zone.z-eye .ne{right:-4px;top:-4px}.zone.z-eye .sw{left:-4px;bottom:-4px}.zone.z-eye .se{right:-4px;bottom:-4px}
+.zone .h.rot,.cropbox .h.rot{border-radius:50%;background:#fff;left:calc(50% - 6px);top:-30px;width:12px;height:12px;cursor:grab}
+.zone .h.rot::after,.cropbox .h.rot::after{content:"";position:absolute;left:5px;top:12px;width:1px;height:17px;background:#fff8}
+.zone .nw,.cropbox .nw{left:-6px;top:-6px;cursor:nwse-resize}.zone .se,.cropbox .se{right:-6px;bottom:-6px;cursor:nwse-resize}
+.zone .ne,.cropbox .ne{right:-6px;top:-6px;cursor:nesw-resize}.zone .sw,.cropbox .sw{left:-6px;bottom:-6px;cursor:nesw-resize}
+.zone .n,.cropbox .n{left:calc(50% - 5px);top:-6px;cursor:ns-resize}.zone .s,.cropbox .s{left:calc(50% - 5px);bottom:-6px;cursor:ns-resize}
+.zone .w,.cropbox .w{top:calc(50% - 5px);left:-6px;cursor:ew-resize}.zone .e,.cropbox .e{top:calc(50% - 5px);right:-6px;cursor:ew-resize}
+.autoeye{position:absolute;border:1px dotted #ff8a98;border-radius:50%;pointer-events:none;z-index:2}
+#draw{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:7;overflow:visible}
+#draw polyline,#draw line{fill:none;stroke:var(--acc);stroke-width:1.5;vector-effect:non-scaling-stroke;stroke-dasharray:4 3}
+body.tool .vp{cursor:crosshair}
+/* кадрування */
+#cropbar{display:none;gap:7px;align-items:center;padding:7px 11px;border-bottom:1px solid var(--line);background:#22303e;flex-wrap:wrap}
+body.cropping #cropbar{display:flex}
+body.cropping #bar{display:none}
+body.cropping .vp{cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M5 13a7 7 0 1 0 2-5' fill='none' stroke='%23000' stroke-width='4'/%3E%3Cpath d='M5 13a7 7 0 1 0 2-5' fill='none' stroke='%23fff' stroke-width='2'/%3E%3Cpath d='M3 4v6h6' fill='none' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E") 12 12,alias}
+body.cropping.lineTool .vp{cursor:crosshair}
+.cropbox{position:absolute;border:1.5px solid #fff;box-shadow:0 0 0 9999px rgba(0,0,0,.55);cursor:move;z-index:4;transform-origin:50% 50%}
+.cropbox .g{position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(#fff5,#fff5) 33.33% 0/1px 100% no-repeat,linear-gradient(#fff5,#fff5) 66.66% 0/1px 100% no-repeat,
+  linear-gradient(#fff5,#fff5) 0 33.33%/100% 1px no-repeat,linear-gradient(#fff5,#fff5) 0 66.66%/100% 1px no-repeat}
+.cropbox.rotating .g{background-image:repeating-linear-gradient(90deg,#fff4 0 1px,transparent 1px 12.5%),repeating-linear-gradient(#fff4 0 1px,transparent 1px 12.5%)}
+.cropbox .h{position:absolute;width:12px;height:12px;background:#fff;border:1px solid #333;border-radius:3px}
+.cropbox.fixed .n,.cropbox.fixed .s,.cropbox.fixed .w,.cropbox.fixed .e{display:none}
+#cropAv{width:44px;text-align:right;font-variant-numeric:tabular-nums;font-size:12px}
+#cropA{width:150px;accent-color:#fff}
+/* права панель */
 h3{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin:16px 0 7px}
-h3:first-child{margin-top:0}
+#fname{font-size:12px;color:var(--dim);word-break:break-all;margin:-2px 0 6px}
 .row{display:flex;align-items:center;gap:7px;margin:6px 0}
 .row label{width:96px;font-size:12.5px;color:var(--dim);flex:none}
 .row input[type=range]{flex:1;accent-color:var(--acc);min-width:0}
@@ -75,63 +153,85 @@ h3:first-child{margin-top:0}
 #auto .none{color:var(--dim);font-size:12.5px}
 .zl{border:1px solid var(--line);border-radius:7px;padding:7px;margin-bottom:7px;cursor:pointer}
 .zl.sel{border-color:var(--acc)}
-.zl .hdr{display:flex;align-items:center;justify-content:space-between}
-.zl .x{background:#3a2026;border-color:#5c2b33;padding:2px 8px;font-size:12px}
+.zl .hdr{display:flex;align-items:center;gap:6px}
+.zl .hdr b{flex:1}
+.zl .hdr button{padding:2px 8px;font-size:12px}
+.zl .x{background:#3a2026;border-color:#5c2b33}
 .hint{color:var(--dim);font-size:12px;margin-top:7px}
+.multi{color:var(--acc2);font-size:12px;margin-top:4px}
 #prog{color:var(--acc2);font-size:13px}
 #err{color:var(--bad);font-size:12px;padding:0 13px;white-space:pre-wrap}
-#cropbar{display:none;gap:7px;align-items:center;padding:7px 11px;border-bottom:1px solid var(--line);background:#22303e;flex-wrap:wrap}
-body.cropping #cropbar{display:flex}
-body.cropping #bar{display:none}
-body.cropping #holder{overflow:hidden}
-.cropbox{position:absolute;border:1.5px solid #fff;box-shadow:0 0 0 9999px rgba(0,0,0,.55);cursor:move;z-index:2}
-.cropbox .g{position:absolute;inset:0;pointer-events:none;
-  background:linear-gradient(#fff5,#fff5) 33.33% 0/1px 100% no-repeat,linear-gradient(#fff5,#fff5) 66.66% 0/1px 100% no-repeat,
-  linear-gradient(#fff5,#fff5) 0 33.33%/100% 1px no-repeat,linear-gradient(#fff5,#fff5) 0 66.66%/100% 1px no-repeat}
-.cropbox .h{position:absolute;width:14px;height:14px;background:#fff;border:1px solid #333;border-radius:3px}
-.cropbox .nw{left:-8px;top:-8px;cursor:nwse-resize}.cropbox .se{right:-8px;bottom:-8px;cursor:nwse-resize}
-.cropbox .ne{right:-8px;top:-8px;cursor:nesw-resize}.cropbox .sw{left:-8px;bottom:-8px;cursor:nesw-resize}
-.cropbox .n{left:calc(50% - 7px);top:-8px;cursor:ns-resize}.cropbox .s{left:calc(50% - 7px);bottom:-8px;cursor:ns-resize}
-.cropbox .w{top:calc(50% - 7px);left:-8px;cursor:ew-resize}.cropbox .e{top:calc(50% - 7px);right:-8px;cursor:ew-resize}
-.cropbox.fixed .n,.cropbox.fixed .s,.cropbox.fixed .w,.cropbox.fixed .e{display:none}
+/* кольори окремо */
+#hslWrap{margin-top:auto;padding-top:14px}
+#btnHsl{width:100%;display:flex;justify-content:space-between;align-items:center}
+#hsl{display:none;border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:7px}
+body.hslOpen #hsl{display:block}
+body.hslOpen #btnHsl{border-color:var(--acc)}
+.tabs{display:flex;gap:4px;margin-bottom:6px}
+.tabs button{flex:1;padding:4px 6px;font-size:12px}
+#hsl .row label{display:flex;align-items:center;gap:6px;width:108px}
+#hsl .row label i{width:11px;height:11px;border-radius:50%;flex:none}
+#hsl input[type=range]{-webkit-appearance:none;appearance:none;height:6px;border-radius:3px;outline:none}
+#hsl input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:#fff;border:1px solid #0008;cursor:pointer}
+#hsl input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;background:#fff;border:1px solid #0008;cursor:pointer}
+/* довідка */
+#help{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center;z-index:50}
+#help.on{display:flex}
+#help .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 22px;max-width:860px;max-height:86vh;overflow:auto;columns:2;column-gap:28px}
+#help h4{margin:0 0 6px;color:var(--acc);font-size:13px;break-after:avoid}
+#help div.g{break-inside:avoid;margin-bottom:14px}
+#help p{margin:3px 0;font-size:13px;display:flex;gap:10px;justify-content:space-between}
+#help p span:last-child{color:var(--dim);text-align:right}
 </style></head><body>
 <header>
   <h1>AZART</h1>
-  <input type="text" id="path" placeholder="Шлях до папки з фото">
-  <button onclick="openFolder()">Відкрити папку</button>
-  <button class="pri" id="btnProc" onclick="runAll()">Обробити</button>
+  <input type="text" id="path" placeholder="Шлях до папки з фото (підпапки теж відкриються)">
+  <button onclick="openFolder()" title="Відкрити папку разом із підпапками (Ctrl+O — до поля шляху)">Відкрити папку</button>
+  <button class="pri" id="btnProc" onclick="runAll()" title="Ctrl+Enter">Обробити</button>
   <label class="hint" style="white-space:nowrap;margin:0">процесів
     <input type="number" id="workers" min="1" max="8" value="2" style="width:46px;background:#0f1115;border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:5px"></label>
   <label class="chk" title="Оброблені фото запишуться замість оригіналів. Інакше — в окрему папку, а оригінали лишаться як були."><input type="checkbox" id="replace" onchange="saveMode()"> Замінити оригінали</label>
-  <input type="text" class="sm" id="outdir" value="оброблені" title="Назва папки для результату" onchange="saveMode()">
+  <input type="text" class="sm" id="outdir" value="оброблені" title="Назва папки для результату (структура підпапок зберігається)" onchange="saveMode()">
   <label class="chk" id="restLbl" title="Покласти в папку результату і фото, яким обробка не потрібна (точні копії), щоб там був повний набір."><input type="checkbox" id="copyRest" checked onchange="saveMode()"> + фото без змін</label>
-  <button id="btnSave" onclick="saveAll()" disabled>Зберегти результат</button>
+  <button id="btnSave" onclick="saveAll()" disabled title="Ctrl+S">Зберегти результат</button>
   <span id="prog"></span>
 </header>
 <div id="err"></div>
 <main>
   <div id="left">
     <div id="lhead">
+      <div class="ptop"><span class="ptitle">Фото</span><button class="pbtn" id="lcol" onclick="togglePanel('l')" title="Згорнути список (Tab — обидві панелі)">«</button></div>
       <select id="filter" onchange="saveMode();drawList()">
         <option value="all">Усі фото</option>
         <option value="will">Будуть оброблені</option>
         <option value="skip">Без змін</option>
       </select>
       <div id="counts"></div>
+      <div id="picked"></div>
     </div>
-    <div id="list"></div>
+    <div id="list" tabindex="0"></div>
   </div>
   <div id="stage">
     <div id="bar">
-      <button id="btnSplit" onclick="toggleSplit()">Порівняння поруч</button>
-      <button onclick="rot(-90)">↺ Повернути</button>
-      <button onclick="rot(90)">Повернути ↻</button>
-      <button onclick="addZone('rect')">+ Зона</button>
-      <button onclick="addZone('ellipse')">+ Овал</button>
-      <button onclick="cropStart()" title="Обрізати кадр: вільно або під формат друку">✂ Кадрувати</button>
-      <button onclick="resetAll()">Скинути поправки</button>
-      <button onclick="applyAll()" title="Ручні поправки і вимкнені автоматичні значення цього фото — до всіх фото папки">Поправки до всіх</button>
-      <span class="hint">Затисніть фото мишею, щоб побачити оригінал</span>
+      <button id="btnSplit" onclick="setView('split')" title="Оригінал і результат поруч (Y)">Поруч</button>
+      <button id="btnWipe" onclick="setView('wipe')" title="До і після на одному фото, лінію можна рухати (Shift+Y)">Шторка</button>
+      <button id="btnWipeDir" class="ic" onclick="wipeDir()" title="Лінія шторки вертикальна / горизонтальна" style="display:none">⇅</button>
+      <span class="sep"></span>
+      <button class="ic" onclick="rot(-90)" title="Повернути вліво (Shift+R)">↺</button>
+      <button class="ic" onclick="rot(90)" title="Повернути вправо (R)">↻</button>
+      <button onclick="cropStart()" title="Кадрування з нахилом (C)">✂ Кадрувати</button>
+      <span class="sep"></span>
+      <button id="t-rect" onclick="setTool('rect')" title="Прямокутна зона (M). Shift — квадрат">▭ Зона</button>
+      <button id="t-ellipse" onclick="setTool('ellipse')" title="Овальна зона (Shift+M). Shift — коло">◯ Овал</button>
+      <button id="t-lasso" onclick="setTool('lasso')" title="Ласо: обведіть мишею довільну ділянку (L)">✎ Ласо</button>
+      <button id="t-eye" onclick="setTool('eye')" title="Червоні очі: клацніть по оку або обведіть його (J)">◉ Червоні очі</button>
+      <span class="sep"></span>
+      <button id="btnPs" onclick="openPs()" title="Відкрити в Photoshop: оброблене фото, якщо воно вже є, інакше оригінал. Кілька — Ctrl/Shift у списку (Ctrl+E)">Ps Photoshop</button>
+      <button onclick="resetAll()" title="Скинути ручні поправки, зони й кадрування цього фото">Скинути</button>
+      <button id="btnAll" onclick="applyAll()" title="Ручні поправки і вимкнені автоматичні значення цього фото — до всіх фото папки (або до вибраних)">Поправки до всіх</button>
+      <span class="grow"></span>
+      <span id="zoomLbl" onclick="zoomFit()" title="Масштаб (⤢ — фото вміщено у вікно). Колесо миші — збільшити/зменшити, Ctrl+0 — вмістити, Ctrl+1 — 100%. Клацніть — вмістити">⤢</span>
+      <button class="ic" onclick="help(true)" title="Гарячі клавіші (F1)">⌨</button>
     </div>
     <div id="cropbar">
       <b>Кадрування</b>
@@ -145,19 +245,23 @@ body.cropping #holder{overflow:hidden}
         <option value="0.8">4×5</option>
         <option value="1">Квадрат</option>
       </select>
-      <button onclick="cropTurn()" title="Рамка вертикальна або горизонтальна">⇄ Орієнтація</button>
+      <button onclick="cropTurn()" title="Рамка вертикальна або горизонтальна (X)">⇄ Орієнтація</button>
+      <label class="hint" style="margin:0;display:flex;align-items:center;gap:6px" title="Нахил рамки, градуси. Також: тягніть мишею поза рамкою. Подвійний клік — 0">Нахил
+        <input type="range" id="cropA" min="-45" max="45" step="0.1" value="0"></label><span id="cropAv">0°</span>
+      <button id="btnLine" onclick="cropLine()" title="Проведіть лінію вздовж горизонту чи стіни — рамка вирівняється по ній">📐 Вирівняти</button>
       <button class="pri" onclick="cropApply()">Застосувати</button>
       <button onclick="cropCancel()">Скасувати</button>
       <button onclick="cropClear()">Без кадрування</button>
-      <span class="hint">Тягніть рамку або її кути. Enter — застосувати, Esc — скасувати.</span>
+      <span class="hint">Тягніть рамку або кути; поза рамкою — обертати. Enter — застосувати, Esc — скасувати.</span>
     </div>
     <div id="wrap">
-      <div id="holder"><img id="img" class="view" alt=""><span class="cap" id="cap">після</span></div>
-      <div id="holder2"><img id="img2" class="view" alt=""><span class="cap">оригінал</span></div>
+      <div class="vp" id="vp1"><div id="holder"><img id="img" class="view" alt=""><img id="imgB" alt=""><div id="wipe"><b>⇔</b></div><svg id="draw"></svg><span class="cap" id="cap">після</span><span class="cap" id="capB">до</span><span class="cap" id="capA">після</span></div></div>
+      <div class="vp" id="vp2"><div id="holder2"><img id="img2" class="view" alt=""><span class="cap">оригінал</span></div></div>
     </div>
   </div>
   <div id="side">
-    <h3>Це фото</h3>
+    <div class="ptop"><button class="pbtn" id="rcol" onclick="togglePanel('r')" title="Згорнути налаштування (Shift+Tab)">»</button><span class="ptitle">Це фото</span></div>
+    <div id="fname"></div>
     <div id="status">—</div>
     <div class="row"><label>Обробка</label>
       <select id="mode" onchange="setMode(this.value)">
@@ -165,6 +269,7 @@ body.cropping #holder{overflow:hidden}
         <option value="force">Обробити</option>
         <option value="skip">Не обробляти</option>
       </select></div>
+    <div class="multi" id="modeMulti"></div>
     <h3>Підсумкові значення</h3>
     <div id="auto"></div>
     <div class="hint">Зніміть позначку — і це значення не застосовуватиметься до фото.</div>
@@ -172,12 +277,66 @@ body.cropping #holder{overflow:hidden}
     <div id="sliders"></div>
     <h3>Зони</h3>
     <div id="zones"></div>
-    <div class="hint">«+ Зона», потім проведіть мишею по фото. Пересувати — тягнути всередині,
-      змінювати розмір — за кут. Видалити — кнопкою × або клавішею Delete.</div>
+    <div class="hint">Зона, овал, ласо або червоні очі — і по фото. Тягніть усередині, щоб пересунути, за квадратики — змінити розмір,
+      за кружечок угорі — обернути (Shift — кроками по 15°). Видалити — × або Delete.</div>
+    <div id="hslWrap">
+      <button id="btnHsl" onclick="toggleHsl()" title="Насиченість, відтінок і яскравість окремих кольорів"><span>🎨 Кольори окремо</span><span id="hslMark"></span></button>
+      <div id="hsl">
+        <div class="tabs"><button data-k="s" onclick="hslTab('s')">Насиченість</button><button data-k="h" onclick="hslTab('h')">Відтінок</button><button data-k="l" onclick="hslTab('l')">Яскравість</button></div>
+        <div id="hslRows"></div>
+        <div class="hint">Подвійний клік по повзунку — 0. <a href="#" onclick="hslReset();return false" style="color:var(--acc2)">Скинути всі кольори</a></div>
+      </div>
+    </div>
   </div>
 </main>
+<div id="help" onclick="if(event.target===this)help(false)"><div class="box">
+  <div class="g"><h4>Загальні</h4>
+    <p><span><kbd>Ctrl</kbd>+<kbd>Z</kbd></span><span>скасувати</span></p>
+    <p><span><kbd>Ctrl</kbd>+<kbd>Y</kbd> або <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></span><span>повторити</span></p>
+    <p><span><kbd>Ctrl</kbd>+<kbd>O</kbd></span><span>шлях до папки</span></p>
+    <p><span><kbd>Ctrl</kbd>+<kbd>Enter</kbd></span><span>обробити</span></p>
+    <p><span><kbd>Ctrl</kbd>+<kbd>S</kbd></span><span>зберегти результат</span></p>
+    <p><span><kbd>Ctrl</kbd>+<kbd>E</kbd></span><span>відкрити в Photoshop</span></p>
+    <p><span><kbd>←</kbd> <kbd>→</kbd> або <kbd>PgUp</kbd> <kbd>PgDn</kbd></span><span>попереднє / наступне фото</span></p>
+    <p><span><kbd>Tab</kbd></span><span>сховати / показати панелі</span></p>
+    <p><span><kbd>Shift</kbd>+<kbd>Tab</kbd></span><span>лише праву панель</span></p>
+    <p><span><kbd>F1</kbd></span><span>ця довідка</span></p></div>
+  <div class="g"><h4>Список фото</h4>
+    <p><span><kbd>Ctrl</kbd>+<kbd>A</kbd></span><span>вибрати всі (миша над списком)</span></p>
+    <p><span><kbd>Ctrl</kbd>+клік</span><span>додати / прибрати з вибору</span></p>
+    <p><span><kbd>Shift</kbd>+клік</span><span>вибрати від… до</span></p>
+    <p><span>клік по папці</span><span>вибрати всі фото папки</span></p>
+    <p><span><kbd>Ctrl</kbd>+<kbd>D</kbd></span><span>зняти вибір</span></p>
+    <p><span><kbd>↑</kbd> <kbd>↓</kbd></span><span>фото вище / нижче (у списку)</span></p></div>
+  <div class="g"><h4>Інструменти</h4>
+    <p><span><kbd>C</kbd></span><span>кадрування (<kbd>Enter</kbd> / <kbd>Esc</kbd>)</span></p>
+    <p><span><kbd>X</kbd></span><span>орієнтація рамки кадру</span></p>
+    <p><span><kbd>M</kbd> / <kbd>Shift</kbd>+<kbd>M</kbd></span><span>зона / овал</span></p>
+    <p><span><kbd>L</kbd></span><span>ласо</span></p>
+    <p><span><kbd>J</kbd></span><span>червоні очі</span></p>
+    <p><span><kbd>R</kbd> / <kbd>Shift</kbd>+<kbd>R</kbd></span><span>повернути вправо / вліво</span></p>
+    <p><span><kbd>Delete</kbd></span><span>видалити вибрану зону</span></p>
+    <p><span><kbd>Ctrl</kbd>+<kbd>J</kbd></span><span>дублювати зону</span></p>
+    <p><span>стрілки</span><span>посунути зону (<kbd>Shift</kbd> — більше)</span></p>
+    <p><span><kbd>Ctrl</kbd>+<kbd>H</kbd></span><span>сховати рамки зон</span></p>
+    <p><span><kbd>Esc</kbd></span><span>скасувати інструмент / вибір</span></p></div>
+  <div class="g"><h4>Перегляд</h4>
+    <p><span>колесо миші</span><span>масштаб</span></p>
+    <p><span><kbd>Ctrl</kbd>+<kbd>0</kbd></span><span>вмістити</span></p>
+    <p><span><kbd>Ctrl</kbd>+<kbd>1</kbd></span><span>100 %</span></p>
+    <p><span><kbd>Ctrl</kbd>+<kbd>+</kbd> / <kbd>Ctrl</kbd>+<kbd>−</kbd></span><span>більше / менше</span></p>
+    <p><span><kbd>Пробіл</kbd>+тягнути, середня кнопка</span><span>рухати фото</span></p>
+    <p><span>подвійний клік</span><span>вмістити ↔ 100 %</span></p>
+    <p><span><kbd>\</kbd> (утримувати)</span><span>оригінал</span></p>
+    <p><span><kbd>Y</kbd></span><span>порівняння поруч</span></p>
+    <p><span><kbd>Shift</kbd>+<kbd>Y</kbd></span><span>шторка до / після</span></p></div>
+</div></div>
 <script>
-const S={files:[],cur:null,settings:{},status:{},sel:-1,mode:null,beforeURL:null,afterURL:null,tok:0,split:false,scan:null,info:null};
+const S={files:[],cur:null,settings:{},status:{},sel:-1,tool:null,beforeURL:null,afterURL:null,tok:0,view:'single',
+  wipe:{p:.5,h:false},scan:null,info:null,picked:new Set(),anchor:null,side:1280,size:null,hideZones:false,overList:false,
+  space:false,hslTab:'s',sid:Math.random().toString(36).slice(2)};
+const Z={k:null,cx:.5,cy:.5};       // масштаб: null — вмістити, інакше пікселів екрана на піксель оригіналу
+const L={left:0,top:0,dw:0,dh:0,fit:1,vw:0,vh:0};
 // ручні поправки: [ключ, назва, мін, макс, крок, знаків після коми, підказка]
 const FIELDS=[['ev','Експозиція',-1.5,1.5,.05,2,'Загальна яскравість, в діафрагмах'],
  ['white','Біла точка',-60,40,1,0,'Як «Рівні» у Photoshop: мінус — світліше'],
@@ -189,6 +348,12 @@ const FIELDS=[['ev','Експозиція',-1.5,1.5,.05,2,'Загальна яс
  ['highlights','Світла',-.8,1.2,.05,2,'Плюс — темніші світлі ділянки'],
  ['contrast','Контраст',-.4,.6,.02,2,''],
  ['sat','Насиченість',-.5,.5,.02,2,'']];
+// параметри зони: [ключ, назва, мін, макс, крок, знаків, типове значення, одиниця]
+const ZF=[['ev','Експозиція',-1.5,1.5,.05,2,0],['contrast','Контраст',-.6,.8,.02,2,0],
+ ['shadows','Тіні',-1,1.5,.05,2,0],['highlights','Світла',-1,1.5,.05,2,0],
+ ['temp','Температура',-.3,.3,.01,2,0],['tint','Тінт',-.3,.3,.01,2,0],['sat','Насиченість',-.6,.6,.02,2,0],
+ ['feather','Розмиття краю',0,.9,.05,2,.3],['a','Поворот',-180,180,1,0,0,'°']];
+const ZNAME={rect:'Зона',ellipse:'Овал',lasso:'Ласо',eye:'Червоне око'};
 // автоматичні значення, які можна вимкнути
 const AUTO=[
  ['white','Біла точка (Рівні)',v=>'255 → '+Math.round(v)],
@@ -200,16 +365,29 @@ const AUTO=[
  ['whites','Білий одяг',()=>'прибрано чужий відтінок (рожевий, зелений)'],
  ['whites_hi','Білий одяг: світлі місця',()=>'притримано, щоб складки не вигоріли'],
  ['guard','Світлі ділянки облич',()=>'притримано, щоб не пересвітились'],
- ['light','Нерівне світло',()=>'темніший бік кадру піднято']];
+ ['light','Нерівне світло',()=>'темніший бік кадру піднято'],
+ ['redeye','Червоні очі',v=>{const n=v&&v.length||0,m=n%10,h=n%100;
+   return 'прибрано червоне: '+n+' '+(m===1&&h!==11?'око':m>=2&&m<=4&&(h<12||h>14)?'ока':'очей')+' (позначені пунктиром)'}]];
 const ST={wait:'Аналізується…',need:'Потребує обробки',ok:'Обробка не потрібна — фото лишиться без змін',
  done:'Уже оброблене цією програмою — пропускається',err:'Не вдалося прочитати файл'};
-const ZF=[['ev','Яскравість',-1.2,1.2,.05],['sat','Насиченість',-.6,.6,.02],['feather','Розмиття краю',.05,.9,.05]];
+// кольори окремо: [ключ, назва, колір кружечка, відтінок у градусах]
+const HSL=[['red','Червоний','#e5484d',0],['orange','Помаранчевий','#f2893b',30],['yellow','Жовтий','#e8c92f',60],
+ ['green','Зелений','#3fae5a',120],['aqua','Бірюзовий','#2bb5b0',180],['blue','Синій','#3b7de8',240],
+ ['purple','Фіолетовий','#8b5cf6',275],['magenta','Пурпуровий','#d946a8',315]];
 const $=s=>document.querySelector(s);
+const el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e};
+const enc=encodeURIComponent;
 const err=m=>{$('#err').textContent=m||''};
 const post=(u,b)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
-const st=()=>S.settings[S.cur]||(S.settings[S.cur]={zones:[],adjust:{},rotate:0,off:[],mode:'auto',crop:null});
+const blankSt=()=>({zones:[],adjust:{},rotate:0,off:[],mode:'auto',crop:null});
+const st=()=>S.settings[S.cur]||(S.settings[S.cur]=blankSt());
 const store=(k,v)=>{try{localStorage.setItem('azart.'+k,JSON.stringify(v))}catch(e){}};
 const recall=(k,d)=>{try{const v=localStorage.getItem('azart.'+k);return v==null?d:JSON.parse(v)}catch(e){return d}};
+const clamp=(v,a,b)=>Math.min(Math.max(v,a),b);
+const D2R=Math.PI/180;
+const dpr=()=>window.devicePixelRatio||1;
+const baseName=f=>f.slice(f.lastIndexOf('/')+1);
+const dirName=f=>f.includes('/')?f.slice(0,f.lastIndexOf('/')):'';
 
 function saveMode(){
   store('replace',$('#replace').checked);store('copyRest',$('#copyRest').checked);
@@ -217,16 +395,20 @@ function saveMode(){
   $('#outdir').disabled=$('#replace').checked;$('#restLbl').style.display=$('#replace').checked?'none':'';
   $('#btnSave').textContent=$('#replace').checked?'Замінити оригінали':'Зберегти результат';
 }
+
+// =================================================================== папка і список
 async function openFolder(){
   const p=$('#path').value.trim(); if(!p)return;
-  const d=await (await fetch('/api/open?path='+encodeURIComponent(p))).json();
-  if(d.error)return err(d.error); err(''); S.cur=null; load(d);
+  const out=$('#outdir').value.trim()||'оброблені';
+  const d=await (await fetch('/api/open?path='+enc(p)+'&skip='+enc(out))).json();
+  if(d.error)return err(d.error); err(''); S.cur=null; S.picked=new Set(); HIST={}; load(d);
 }
 function load(d){
   S.files=d.files||[];S.settings=d.settings||{};S.status=d.status||{};S.scan=d.scan;$('#path').value=d.src||'';
   if(d.workers){$('#workers').value=d.workers;$('#workers').title='Ядер у комп\'ютері: '+d.cores+'. Більше процесів — швидше, але комп\'ютер завантажений сильніше.'}
   $('#btnSave').disabled=!d.tmp;
-  drawList(); if(!S.cur&&S.files[0])pick(S.files[0]);
+  for(const f of [...S.picked])if(!S.files.includes(f))S.picked.delete(f);
+  drawList(); if(!S.cur&&S.files[0])choose(S.files[0]);
   if(S.scan&&!S.scan.done)watchScan();
 }
 let watching=false;
@@ -247,65 +429,238 @@ function shown(f){
   const s=S.status[f]||{},flt=$('#filter').value;
   if(flt==='will')return !!s.will; if(flt==='skip')return !s.will; return true;
 }
+const visible=()=>S.files.filter(f=>shown(f)||f===S.cur);
 function drawList(){
-  const l=$('#list'); l.innerHTML='';
-  S.files.forEach(f=>{
-    if(!shown(f)&&f!==S.cur)return;
-    const s=S.status[f]||{st:'wait'},d=document.createElement('div');
-    const i=document.createElement('i'); d.appendChild(i); d.appendChild(document.createTextNode(f));
-    d.className=(f===S.cur?'sel ':'')+'st-'+s.st+(s.mode==='force'?' force':'')+(s.mode==='skip'?' skip':'')+(s.manual?' has':'');
-    d.title=ST[s.st]+(s.mode==='force'?' · ви обрали обробити':s.mode==='skip'?' · ви обрали не обробляти':'');
-    d.onclick=()=>pick(f); l.appendChild(d);});
+  const l=$('#list'), sc=l.scrollTop; l.innerHTML='';
+  const vis=visible(), dirs=new Set(S.files.map(dirName)), many=dirs.size>1||!dirs.has('');
+  let cur=null;
+  vis.forEach(f=>{
+    const dn=dirName(f);
+    if(many&&dn!==cur){cur=dn;
+      const n=vis.filter(x=>dirName(x)===dn).length;
+      const h=el('div','dir'); h.textContent='📁 '+(dn||'(ця папка)'); h.title='Клік — вибрати всі фото цієї папки (Ctrl — додати до вибору)';
+      const sm=el('small'); sm.textContent=n; h.appendChild(sm);
+      h.onclick=e=>pickDir(dn,e); l.appendChild(h);}
+    const s=S.status[f]||{st:'wait'},d=el('div','it');
+    d.appendChild(el('i')); d.appendChild(document.createTextNode(many?baseName(f):f));
+    d.className='it'+(many?' in':'')+(f===S.cur?' sel':S.picked.has(f)?' pk':'')+' st-'+s.st+(s.mode==='force'?' force':'')+(s.mode==='skip'?' skip':'')+(s.manual?' has':'');
+    d.title=f+' — '+ST[s.st]+(s.mode==='force'?' · ви обрали обробити':s.mode==='skip'?' · ви обрали не обробляти':'');
+    d.onclick=e=>listClick(f,e); d.dataset.f=f; l.appendChild(d);});
+  l.scrollTop=sc;
   const all=S.files.length, will=S.files.filter(f=>(S.status[f]||{}).will).length;
   const done=S.files.filter(f=>(S.status[f]||{}).st==='done').length;
   let t='Буде оброблено: <b>'+will+'</b> з '+all;
+  if(many)t+=' · папок: '+dirs.size;
   if(done)t+='<br>Уже оброблених раніше: '+done;
   if(S.scan&&!S.scan.done)t+='<br>Аналіз: '+S.scan.i+' з '+S.scan.n;
   $('#counts').innerHTML=t;
   $('#btnProc').textContent=will?'Обробити ('+will+')':'Обробити';
+  drawPicked();
 }
+function drawPicked(){
+  const n=S.picked.size;
+  $('#picked').innerHTML=n>1?'Вибрано: <b>'+n+'</b> · <a href="#" style="color:var(--acc2)" onclick="pickNone();return false">зняти</a>':'';
+  $('#btnPs').textContent=n>1?'Ps Photoshop ('+n+')':'Ps Photoshop';
+  $('#btnAll').textContent=n>1?'Поправки до вибраних ('+n+')':'Поправки до всіх';
+  $('#modeMulti').textContent=n>1?'Застосується до всіх вибраних: '+n:'';
+}
+function scrollToCur(){const e=[...$('#list').querySelectorAll('.it')].find(x=>x.dataset.f===S.cur);if(e)e.scrollIntoView({block:'nearest'})}
+function listClick(f,e){
+  const vis=visible();
+  if(e.shiftKey&&S.anchor&&vis.includes(S.anchor)){
+    const a=vis.indexOf(S.anchor),b=vis.indexOf(f),rng=vis.slice(Math.min(a,b),Math.max(a,b)+1);
+    if(!(e.ctrlKey||e.metaKey))S.picked=new Set();
+    rng.forEach(x=>S.picked.add(x)); pick(f);
+  }else if(e.ctrlKey||e.metaKey){
+    if(S.picked.size===0&&S.cur)S.picked.add(S.cur);
+    if(S.picked.has(f)&&S.picked.size>1){S.picked.delete(f); if(f===S.cur)pick([...S.picked].pop()); else drawList()}
+    else{S.picked.add(f); pick(f)}
+    S.anchor=f;
+  }else choose(f);
+}
+function choose(f){S.picked=new Set([f]);S.anchor=f;pick(f)}
+function pickDir(dn,e){
+  const fs=visible().filter(x=>dirName(x)===dn); if(!fs.length)return;
+  if(!(e&&(e.ctrlKey||e.metaKey)))S.picked=new Set();
+  fs.forEach(x=>S.picked.add(x)); S.anchor=fs[0];
+  if(!fs.includes(S.cur))pick(fs[0]); else drawList();
+}
+function pickAll(){const v=visible();S.picked=new Set(v);drawList()}
+function pickNone(){S.picked=new Set(S.cur?[S.cur]:[]);drawList()}
+function step(d,extend){
+  const v=visible(); if(!v.length)return;
+  const i=v.indexOf(S.cur), j=clamp((i<0?0:i)+d,0,v.length-1); if(j===i)return;
+  if(extend){S.picked.add(v[j]);pick(v[j])}else choose(v[j]);
+  setTimeout(scrollToCur,0);
+}
+const picked=()=>S.picked.size>1?S.files.filter(f=>S.picked.has(f)):(S.cur?[S.cur]:[]);
+
 function drawStatus(){
   const s=S.status[S.cur]||{st:'wait'}, b=$('#status');
   let t=ST[s.st]||'';
   if(s.mode==='force')t='Буде оброблене: ви обрали «Обробити»';
   else if(s.mode==='skip')t='Не оброблятиметься: ви обрали «Не обробляти»';
-  else if(s.manual&&s.st!=='need')t='Буде оброблене: є ручні поправки або зони';
+  else if(s.manual&&s.st!=='need')t='Буде оброблене: є ручні поправки, зони або кадрування';
   if(S.info&&S.info.series)t+='<br><small>Баланс білого взято від інших фото цієї зйомки</small>';
   b.innerHTML=t; b.className=s.mode==='skip'?'ok':(s.will?'need':s.st);
   $('#mode').value=s.mode||'auto';
+  $('#fname').textContent=S.cur||'';
+}
+
+// =================================================================== зображення
+async function loadBefore(f,side,full){
+  const r=await fetch('/api/before?file='+enc(f)+'&side='+side+(full?'&full=1':''));
+  if(!r.ok)return null;
+  const sz=(r.headers.get('X-Size')||'').split(',').map(Number);
+  return {url:URL.createObjectURL(await r.blob()),size:sz[0]>0?sz:null};
+}
+function setBefore(b,show){
+  if(S.beforeURL&&S.beforeURL!==b.url)URL.revokeObjectURL(S.beforeURL);
+  S.beforeURL=b.url; S.size=b.size;
+  $('#img2').src=b.url; $('#imgB').src=b.url;
+  if(show){$('#img').src=b.url;$('#cap').textContent='оригінал'}
 }
 async function pick(f){
   if(CR.on&&f!==S.cur)cropEnd();
-  S.cur=f;S.sel=-1;S.info=null;drawList();drawSliders();drawZones();drawStatus();drawAuto();
+  if(f!==S.cur){S.sel=-1;S.tool=S.tool==='eye'?'eye':null;toolUI()}
+  S.cur=f;S.info=null;S.picked.add(f);drawList();drawSliders();drawZones();drawStatus();drawAuto();drawHsl();
   const tok=++S.tok;
-  const r=await fetch('/api/before?file='+encodeURIComponent(f));
-  if(!r.ok||tok!==S.tok)return;
-  if(S.beforeURL)URL.revokeObjectURL(S.beforeURL);
-  S.beforeURL=URL.createObjectURL(await r.blob());
-  if(tok!==S.tok)return;
-  $('#img').src=S.beforeURL; $('#img2').src=S.beforeURL; $('#cap').textContent='оригінал';
+  const b=await loadBefore(f,S.side); if(!b||tok!==S.tok)return;
+  setBefore(b,true);
+  if(S.afterURL){URL.revokeObjectURL(S.afterURL);S.afterURL=null}
   refresh(true);
 }
 let timer=null;
-function refresh(now){clearTimeout(timer);timer=setTimeout(doRefresh,now?0:200)}
-async function doRefresh(){
-  if(!S.cur||CR.on)return;
-  const f=S.cur, tok=++S.tok, s=st();
+function refresh(now){clearTimeout(timer);timer=setTimeout(doRefresh,now?0:180)}
+async function syncSettings(){
+  const f=S.cur, s=st();
   const sr=await (await post('/api/settings',{file:f,zones:s.zones,adjust:s.adjust,rotate:s.rotate||0,off:s.off||[],mode:s.mode||'auto',crop:s.crop||null})).json();
   if(sr.status)S.status[f]=sr.status;
+}
+async function doRefresh(){
+  if(!S.cur||CR.on)return;
+  const f=S.cur, tok=++S.tok;
+  await syncSettings();
   if(tok!==S.tok)return;
   $('#cap').textContent='обробка…';
-  const r=await fetch('/api/after?file='+encodeURIComponent(f)+'&tok='+tok);
-  if(tok!==S.tok)return;
+  const r=await fetch('/api/after?file='+enc(f)+'&tok='+tok+'&sid='+S.sid+'&side='+S.side);
+  if(tok!==S.tok||r.status===204)return;
   if(!r.ok){$('#cap').textContent='після';return err('Помилка обробки')}
   S.info=JSON.parse(r.headers.get('X-Info')||'{}');
   if(S.info.status)S.status[f]=S.info.status;
   const blob=await r.blob(); if(tok!==S.tok)return;
   if(S.afterURL)URL.revokeObjectURL(S.afterURL);
   S.afterURL=URL.createObjectURL(blob);
-  $('#img').src=S.afterURL; $('#cap').textContent='після';
-  drawAuto(); drawStatus(); drawList();
+  if(!S.holding)$('#img').src=S.afterURL; $('#cap').textContent='після';
+  drawAuto(); drawStatus(); drawList(); paintZones();
 }
+
+// =================================================================== масштаб і рух
+function layout(){
+  const img=$('#img'), vp=$('#vp1'); if(!img.naturalWidth)return;
+  const W=(S.size&&S.size[0])||img.naturalWidth, H=(S.size&&S.size[1])||img.naturalHeight;
+  const vw=vp.clientWidth, vh=vp.clientHeight; if(!vw||!vh)return;
+  const fit=Math.min(vw/W,vh/H);
+  let k=Z.k==null?fit:Z.k; if(k<=fit*1.001){k=fit;Z.k=null}
+  const dw=W*k, dh=H*k;
+  const left=dw<=vw?(vw-dw)/2:clamp(vw/2-Z.cx*dw,vw-dw,0);
+  const top=dh<=vh?(vh-dh)/2:clamp(vh/2-Z.cy*dh,vh-dh,0);
+  if(dw>vw)Z.cx=(vw/2-left)/dw; if(dh>vh)Z.cy=(vh/2-top)/dh;
+  Object.assign(L,{left,top,dw,dh,fit,vw,vh,W,H,k});
+  for(const h of [$('#holder'),$('#holder2')])Object.assign(h.style,{left:left+'px',top:top+'px',width:dw+'px',height:dh+'px'});
+  $('#zoomLbl').textContent=Math.round(k*dpr()*100)+'%'+(Z.k==null?' ⤢':'');
+  document.body.classList.toggle('zoomed',Z.k!=null);
+  wantSide();
+}
+function zoomTo(k,mx,my){   // k — пікселів екрана на піксель оригіналу; mx,my — точка у вікні перегляду, що лишається на місці
+  if(!L.dw)return;
+  if(mx==null){mx=L.vw/2;my=L.vh/2}
+  const fx=(mx-L.left)/L.dw, fy=(my-L.top)/L.dh;
+  k=clamp(k,L.fit,4/dpr());
+  const dw=L.W*k, dh=L.H*k;
+  Z.k=k<=L.fit*1.001?null:k;
+  Z.cx=(L.vw/2-(mx-fx*dw))/dw; Z.cy=(L.vh/2-(my-fy*dh))/dh;
+  layout();
+}
+function zoomFit(){Z.k=null;Z.cx=Z.cy=.5;layout()}
+function zoom100(mx,my){zoomTo(1/dpr(),mx,my)}
+let sideTimer=null;
+function wantSide(){
+  if(!L.W)return;
+  const need=Math.max(L.dw,L.dh)*dpr(), M=Math.max(L.W,L.H);
+  const eff={1280:Math.min(1280,M),2600:Math.min(2600,M),0:M};
+  let side=1280;
+  if(need>eff[1280]*1.1)side=(M>2600&&need<=2600*1.1)?2600:(M>1280*1.1?(M<=2600?2600:0):1280);
+  if(Z.k==null)side=1280;
+  if(side===S.side)return;
+  clearTimeout(sideTimer); sideTimer=setTimeout(()=>{S.side=side;reloadSide()},260);
+}
+async function reloadSide(){
+  if(!S.cur)return;
+  const tok=++S.tok;
+  if(CR.on){const b=await loadBefore(S.cur,S.side,true); if(!b||tok!==S.tok||!CR.on)return;
+    if(CR.url)URL.revokeObjectURL(CR.url); CR.url=b.url; $('#img').src=b.url; return}
+  const b=await loadBefore(S.cur,S.side); if(!b||tok!==S.tok)return;
+  setBefore(b,false); refresh(true);
+}
+const wrap=$('#wrap');
+wrap.addEventListener('wheel',e=>{
+  e.preventDefault(); if(!L.dw)return;
+  const vp=e.target.closest('.vp')||$('#vp1'), r=vp.getBoundingClientRect();
+  const f=Math.pow(1.0018,-(e.deltaMode===1?e.deltaY*33:e.deltaY));
+  zoomTo((Z.k||L.fit)*f,e.clientX-r.left,e.clientY-r.top);
+},{passive:false});
+function startPan(e){
+  e.preventDefault(); e.stopPropagation();
+  const sx=e.clientX, sy=e.clientY, cx=Z.cx, cy=Z.cy;
+  document.body.classList.add('panning');
+  const mv=m=>{Z.cx=cx-(m.clientX-sx)/L.dw;Z.cy=cy-(m.clientY-sy)/L.dh;layout()};
+  const up=()=>{document.body.classList.remove('panning');document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up)};
+  document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+}
+wrap.addEventListener('mousedown',e=>{if(e.button===1||(e.button===0&&S.space))startPan(e)},true);
+wrap.addEventListener('dblclick',e=>{
+  if(CR.on||S.tool||e.target.closest('.zone,#wipe'))return;
+  const r=$('#vp1').getBoundingClientRect();
+  if(Z.k==null)zoom100(e.clientX-r.left,e.clientY-r.top); else zoomFit();
+});
+new ResizeObserver(()=>layout()).observe($('#vp1'));
+$('#img').addEventListener('load',()=>{layout();paintZones()});
+
+// =================================================================== порівняння
+function setView(v){
+  if(CR.on)return;
+  S.view=S.view===v?'single':v;
+  document.body.classList.toggle('split',S.view==='split');
+  document.body.classList.toggle('wipe',S.view==='wipe');
+  $('#btnSplit').classList.toggle('on',S.view==='split');
+  $('#btnWipe').classList.toggle('on',S.view==='wipe');
+  $('#btnWipeDir').style.display=S.view==='wipe'?'':'none';
+  paintWipe(); requestAnimationFrame(layout);
+}
+function wipeDir(){S.wipe.h=!S.wipe.h;store('wipeH',S.wipe.h);paintWipe()}
+function paintWipe(){
+  document.body.classList.toggle('wh',S.wipe.h);
+  const p=S.wipe.p*100;
+  $('#imgB').style.clipPath=S.wipe.h?`inset(0 0 ${100-p}% 0)`:`inset(0 ${100-p}% 0 0)`;
+  const w=$('#wipe'); if(S.wipe.h){w.style.top=p+'%';w.style.left=''}else{w.style.left=p+'%';w.style.top=''}
+}
+function dragWipe(e){
+  e.preventDefault(); e.stopPropagation();
+  const mv=m=>{const r=$('#holder').getBoundingClientRect();
+    S.wipe.p=clamp(S.wipe.h?(m.clientY-r.top)/r.height:(m.clientX-r.left)/r.width,0,1);paintWipe()};
+  mv(e);
+  const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up)};
+  document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+}
+$('#wipe').addEventListener('mousedown',e=>{if(e.button===0&&!S.space)dragWipe(e)});
+$('#wipe').addEventListener('dblclick',e=>{e.stopPropagation();wipeDir()});
+function holdOriginal(on){
+  if(!S.afterURL||!S.beforeURL)return;
+  S.holding=on; $('#img').src=on?S.beforeURL:S.afterURL; $('#cap').textContent=on?'оригінал':'після';
+}
+
+// =================================================================== правий бік: значення
 function drawAuto(){
   const box=$('#auto'), I=S.info; box.innerHTML='';
   if(!I){box.innerHTML='<div class="none">…</div>';return}
@@ -313,189 +668,466 @@ function drawAuto(){
   if(!keys.length){box.innerHTML='<div class="none">Автоматично нічого не змінюється: фото в нормі.</div>';return}
   keys.forEach(([k,name,fmt])=>{
     const on=!off.includes(k), v=(I.auto||{})[k];
-    const l=document.createElement('label'); if(!on)l.className='offd';
+    const l=el('label'); if(!on)l.className='offd';
     l.innerHTML=`<input type=checkbox ${on?'checked':''}><span><b>${name}</b><small>${on&&v!=null?fmt(v):'не застосовується'}</small></span>`;
-    l.querySelector('input').onchange=e=>{const o=new Set(st().off||[]);
+    l.querySelector('input').onchange=e=>{snap();const o=new Set(st().off||[]);
       if(e.target.checked)o.delete(k); else o.add(k); st().off=[...o]; refresh(true)};
     box.appendChild(l);
   });
   if((I.changes||[]).length===1&&I.changes[0]==='black'&&!off.length)
     box.insertAdjacentHTML('beforeend','<div class="hint">Самої лише чорної точки замало, щоб обробляти фото.</div>');
 }
+function slider(box,name,lo,hi,stp,dig,val,set,dflt,unit,tip){
+  const d=el('div','row'); d.title=tip||'';
+  d.innerHTML=`<label>${name}</label><input type=range min=${lo} max=${hi} step=${stp} value=${val}><span>${(+val).toFixed(dig)}${unit||''}</span>`;
+  const inp=d.querySelector('input'), sp=d.querySelector('span');
+  let snapped=false;
+  const beg=()=>{if(!snapped){snap();snapped=true}};
+  inp.addEventListener('pointerdown',beg); inp.addEventListener('keydown',e=>{if(e.key.startsWith('Arrow')||e.key==='Home'||e.key==='End')beg()});
+  inp.addEventListener('change',()=>{snapped=false});
+  inp.oninput=()=>{const x=parseFloat(inp.value); sp.textContent=x.toFixed(dig)+(unit||''); set(x)};
+  inp.ondblclick=()=>{snap();inp.value=dflt||0;inp.oninput()};
+  box.appendChild(d); return d;
+}
 function drawSliders(){
   const box=$('#sliders'); box.innerHTML='';
-  FIELDS.forEach(([k,name,lo,hi,step,dig,tip])=>{
-    const v=(st().adjust||{})[k]||0;
-    const d=document.createElement('div'); d.className='row'; d.title=tip||'';
-    d.innerHTML=`<label>${name}</label><input type=range min=${lo} max=${hi} step=${step} value=${v}><span>${(+v).toFixed(dig)}</span>`;
-    const inp=d.querySelector('input');
-    inp.oninput=e=>{const x=parseFloat(e.target.value); st().adjust=st().adjust||{};
-      if(Math.abs(x)<1e-9)delete st().adjust[k]; else st().adjust[k]=x;
-      d.querySelector('span').textContent=x.toFixed(dig); refresh();};
-    inp.ondblclick=()=>{inp.value=0;inp.oninput({target:inp})};
-    box.appendChild(d);
+  FIELDS.forEach(([k,name,lo,hi,stp,dig,tip])=>{
+    slider(box,name,lo,hi,stp,dig,(st().adjust||{})[k]||0,x=>{st().adjust=st().adjust||{};
+      if(Math.abs(x)<1e-9)delete st().adjust[k]; else st().adjust[k]=x; refresh()},0,'',tip);
+  });
+}
+
+// =================================================================== кольори окремо
+function toggleHsl(){document.body.classList.toggle('hslOpen');store('hsl',document.body.classList.contains('hslOpen'));
+  if(document.body.classList.contains('hslOpen'))setTimeout(()=>$('#hsl').scrollIntoView({block:'nearest'}),0)}
+function hslTab(k){S.hslTab=k;drawHsl()}
+function hslTrack(k,deg){
+  const c=(h,s,l)=>`hsl(${(h+360)%360},${s}%,${l}%)`;
+  if(k==='s')return `linear-gradient(90deg,${c(deg,0,55)},${c(deg,100,50)})`;
+  if(k==='h')return `linear-gradient(90deg,${c(deg-40,85,50)},${c(deg,85,50)},${c(deg+40,85,50)})`;
+  return `linear-gradient(90deg,${c(deg,80,15)},${c(deg,80,50)},${c(deg,80,88)})`;
+}
+function drawHsl(){
+  document.querySelectorAll('#hsl .tabs button').forEach(b=>b.classList.toggle('on',b.dataset.k===S.hslTab));
+  const box=$('#hslRows'); box.innerHTML=''; const k=S.hslTab, adj=st().adjust||{};
+  HSL.forEach(([c,name,col,deg])=>{
+    const key='hsl_'+k+'_'+c;
+    const r=slider(box,'<i style="background:'+col+'"></i>'+name,-1,1,.02,2,adj[key]||0,x=>{st().adjust=st().adjust||{};
+      if(Math.abs(x)<1e-9)delete st().adjust[key]; else st().adjust[key]=x; hslMark(); refresh()},0,'');
+    r.querySelector('input').style.background=hslTrack(k,deg);
+  });
+  hslMark();
+}
+function hslMark(){const n=Object.keys(st().adjust||{}).filter(k=>k.startsWith('hsl_')).length;$('#hslMark').textContent=n?'змінено: '+n:'▾'}
+function hslReset(){snap();const a=st().adjust||{};Object.keys(a).filter(k=>k.startsWith('hsl_')).forEach(k=>delete a[k]);drawHsl();refresh(true)}
+
+// =================================================================== рамки (зони й кадр): спільне перетягування
+function rotv(x,y,a){const r=a*D2R,c=Math.cos(r),s=Math.sin(r);return [c*x-s*y,s*x+c*y]}
+function resizeBox(b0,k,dx,dy,o,shift){
+  const [lu,lv]=rotv(dx,dy,-b0.a);
+  const E=k.includes('e'),W=k.includes('w'),N=k.includes('n'),Sd=k.includes('s');
+  let w=b0.w,h=b0.h;
+  if(E)w=b0.w+lu; if(W)w=b0.w-lu; if(Sd)h=b0.h+lv; if(N)h=b0.h-lv;
+  const t=o.ratio||(shift&&k.length===2?b0.w/b0.h:0), mn=o.min||6;
+  w=Math.max(mn,w); h=Math.max(mn,h);
+  if(t){ if(k.length===2)(w/h>t?h=w/t:w=h*t); else if(E||W)h=w/t; else w=h*t }
+  const dw=w-b0.w, dh=h-b0.h;
+  const su=E?dw/2:W?-dw/2:0, sv=Sd?dh/2:N?-dh/2:0;
+  const [gx,gy]=rotv(su,sv,b0.a);
+  return {...b0,w,h,cx:b0.cx+gx,cy:b0.cy+gy};
+}
+const norm180=a=>((a+180)%360+360)%360-180;
+// b0 — рамка в пікселях екрана відносно #holder: {cx,cy,w,h,a}; k — '' рух, 'rot' поворот, або сторона/кут
+function dragBox(e,b0,k,o){
+  e.preventDefault(); e.stopPropagation();
+  const hr=$('#holder').getBoundingClientRect(), sx=e.clientX, sy=e.clientY;
+  const ccx=hr.left+b0.cx, ccy=hr.top+b0.cy, ang0=Math.atan2(sy-ccy,sx-ccx);
+  if(o.start)o.start();
+  let moved=false;
+  const mv=m=>{
+    const dx=m.clientX-sx, dy=m.clientY-sy; let b;
+    if(!moved&&Math.hypot(dx,dy)<2)return; moved=true;
+    if(k==='rot'){let a=b0.a+(Math.atan2(m.clientY-ccy,m.clientX-ccx)-ang0)/D2R; a=norm180(a);
+      if(m.shiftKey)a=Math.round(a/15)*15; if(o.amax)a=clamp(a,-o.amax,o.amax); b={...b0,a:Math.round(a*10)/10}}
+    else if(!k)b={...b0,cx:b0.cx+dx,cy:b0.cy+dy};
+    else b=resizeBox(b0,k,dx,dy,o,m.shiftKey);
+    if(o.fix){let f=o.fix(b,k);
+      if(!f&&k&&k!=='rot'){let lo=0,hi=1;for(let i=0;i<12;i++){const md=(lo+hi)/2;(o.fix(resizeBox(b0,k,dx*md,dy*md,o,m.shiftKey),k)?lo=md:hi=md)}
+        f=o.fix(resizeBox(b0,k,dx*lo,dy*lo,o,m.shiftKey),k)}
+      if(!f)return; b=f}
+    o.set(b);};
+  const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);if(o.end)o.end(moved)};
+  document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+}
+const HANDLES=['nw','n','ne','e','se','s','sw','w'];
+
+// =================================================================== зони
+const zb=z=>{const W=$('#img').clientWidth,H=$('#img').clientHeight;return {cx:(z.x+z.w/2)*W,cy:(z.y+z.h/2)*H,w:z.w*W,h:z.h*H,a:z.a||0}};
+function setZ(z,b){const W=$('#img').clientWidth,H=$('#img').clientHeight;
+  z.x=(b.cx-b.w/2)/W;z.y=(b.cy-b.h/2)/H;z.w=b.w/W;z.h=b.h/H;z.a=Math.round((b.a||0)*10)/10}
+function paintZones(){
+  document.querySelectorAll('#holder .zone,#holder .autoeye').forEach(e=>e.remove());
+  if(CR.on)return paintCrop();
+  const holder=$('#holder'), img=$('#img'); if(!img.naturalWidth||!S.cur)return;
+  if(!S.hideZones&&S.info&&!S.holding&&!(st().off||[]).includes('redeye'))
+    ((S.info.auto||{}).redeye||[]).forEach(([x,y,r])=>{const d=el('div','autoeye'),ar=L.W/L.H||1;
+      Object.assign(d.style,{left:(x-r)*100+'%',top:(y-r*ar)*100+'%',width:2*r*100+'%',height:2*r*ar*100+'%'});
+      d.title='Червоне око, знайдене програмою'; holder.appendChild(d)});
+  (st().zones||[]).forEach((z,i)=>{
+    if(S.hideZones&&i!==S.sel)return;
+    const shape=z.shape||'rect', d=el('div','zone z-'+shape+(i===S.sel?' sel':''));
+    Object.assign(d.style,{left:z.x*100+'%',top:z.y*100+'%',width:z.w*100+'%',height:z.h*100+'%',transform:'rotate('+(z.a||0)+'deg)'});
+    if(shape==='lasso'){const pts=(z.pts||[]).map(p=>(p[0]*100).toFixed(2)+','+(p[1]*100).toFixed(2)).join(' ');
+      d.innerHTML=`<svg viewBox="0 0 100 100" preserveAspectRatio="none"><polygon class="bk" points="${pts}"/><polygon class="fg" points="${pts}"/></svg>`}
+    if(i===S.sel){
+      const hs=shape==='eye'?['nw','ne','se','sw']:HANDLES;
+      d.insertAdjacentHTML('beforeend',hs.map(k=>`<div class="h ${k}" data-k="${k}"></div>`).join('')+(shape==='eye'?'':'<div class="h rot" data-k="rot" title="Обернути (Shift — по 15°)"></div>'));
+    }
+    d.title=ZNAME[shape]+' '+(i+1);
+    d.addEventListener('mousedown',e=>{
+      if(e.button!==0||S.space||S.tool)return;     // з інструментом — малюємо нову зону поверх
+      const k=e.target.dataset.k||'';
+      snap(); S.sel=i; drawZones();
+      dragBox(e,zb(z),k,{ratio:shape==='eye'?1:0,min:6,set:b=>{setZ(z,b);paintZones()},end:m=>{if(m){drawZones();refresh()}else undoDrop()}});
+    });
+    holder.appendChild(d);
   });
 }
 function drawZones(){
   const box=$('#zones'); box.innerHTML='';
-  (st().zones||[]).forEach((z,i)=>{
-    const d=document.createElement('div'); d.className='zl'+(i===S.sel?' sel':'');
-    const h=document.createElement('div'); h.className='hdr';
-    h.innerHTML='<b>'+(z.shape==='ellipse'?'Овал ':'Зона ')+(i+1)+'</b>';
-    const x=document.createElement('button'); x.className='x'; x.textContent='× видалити';
-    x.onclick=e=>{e.stopPropagation(); st().zones.splice(i,1); S.sel=-1; drawZones(); refresh(true)};
-    h.appendChild(x); d.appendChild(h);
+  const zs=st().zones||[];
+  if(!zs.length)box.innerHTML='<div class="hint" style="margin:0">Зон немає.</div>';
+  zs.forEach((z,i)=>{
+    const shape=z.shape||'rect', d=el('div','zl'+(i===S.sel?' sel':''));
+    const h=el('div','hdr'); h.innerHTML='<b>'+ZNAME[shape]+' '+(i+1)+'</b>';
+    const dup=el('button',null,'⧉'); dup.title='Дублювати (Ctrl+J)'; dup.onclick=e=>{e.stopPropagation();S.sel=i;dupZone()};
+    const x=el('button','x','×'); x.title='Видалити (Delete)'; x.onclick=e=>{e.stopPropagation();delZone(i)};
+    h.appendChild(dup); h.appendChild(x); d.appendChild(h);
     d.onclick=()=>{S.sel=i;drawZones()};
-    if(i===S.sel)ZF.forEach(([k,name,lo,hi,step])=>{
-      const v=z[k]!==undefined?z[k]:(k==='feather'?.3:0);
-      const r=document.createElement('div'); r.className='row';
-      r.innerHTML=`<label>${name}</label><input type=range min=${lo} max=${hi} step=${step} value=${v}><span>${(+v).toFixed(2)}</span>`;
-      r.querySelector('input').oninput=e=>{z[k]=parseFloat(e.target.value);
-        r.querySelector('span').textContent=z[k].toFixed(2); refresh();};
-      d.appendChild(r);});
+    if(i===S.sel){
+      if(shape==='eye')d.insertAdjacentHTML('beforeend','<div class="hint">Усередині круга червоне стане темною зіницею. Відблиск і райдужка не змінюються.</div>');
+      else ZF.forEach(([k,name,lo,hi,stp,dig,dflt,unit])=>{
+        const v=z[k]!==undefined?z[k]:dflt;
+        const r=slider(d,name,lo,hi,stp,dig,v,x=>{z[k]=x; if(k==='a')paintZones(); refresh()},dflt,unit||'');
+        r.onclick=e=>e.stopPropagation();
+      });
+    }
     box.appendChild(d);
   });
   paintZones();
 }
-function paintZones(){
-  document.querySelectorAll('.zone').forEach(e=>e.remove());
-  if(CR.on)return paintCrop();
-  const img=$('#img'); if(!img.clientWidth)return;
-  (st().zones||[]).forEach((z,i)=>{
-    const d=document.createElement('div');
-    d.className='zone'+(z.shape==='ellipse'?' el':'')+(i===S.sel?' sel':'');
-    d.style.left=(z.x*img.clientWidth)+'px'; d.style.top=(z.y*img.clientHeight)+'px';
-    d.style.width=(z.w*img.clientWidth)+'px'; d.style.height=(z.h*img.clientHeight)+'px';
-    d.innerHTML='<div class="hd"></div>';
-    d.onmousedown=e=>{e.stopPropagation();e.preventDefault();S.sel=i;drawZones();
-      const hd=e.target.classList.contains('hd'),sx=e.clientX,sy=e.clientY,o={...z};
-      const mv=m=>{const dx=(m.clientX-sx)/img.clientWidth, dy=(m.clientY-sy)/img.clientHeight;
-        if(hd){z.w=Math.max(.03,o.w+dx);z.h=Math.max(.03,o.h+dy)}else{z.x=o.x+dx;z.y=o.y+dy}
-        paintZones();};
-      const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);refresh()};
-      document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);};
-    $('#holder').appendChild(d);
-  });
+function delZone(i){snap();st().zones.splice(i,1);S.sel=-1;drawZones();refresh(true)}
+function dupZone(){
+  const zs=st().zones||[]; if(S.sel<0||!zs[S.sel])return; snap();
+  const z=JSON.parse(JSON.stringify(zs[S.sel])); z.x+=.02; z.y+=.02; zs.push(z); S.sel=zs.length-1; drawZones(); refresh(true);
 }
-function addZone(shape){S.mode=shape;$('#img').style.cursor='crosshair'}
-function setMode(v){st().mode=v;refresh(true)}
-function resetAll(){const s=st();const hadCrop=!!s.crop;s.zones=[];s.adjust={};s.off=[];s.mode='auto';s.crop=null;S.sel=-1;
-  drawSliders();drawZones();
-  if(hadCrop)post('/api/settings',{file:S.cur,crop:null,zones:[],adjust:{},off:[],mode:'auto'}).then(()=>pick(S.cur));else refresh(true)}
-async function applyAll(){
-  if(!S.cur)return;
-  await doRefresh();
-  const d=await (await post('/api/apply_all',{from:S.cur})).json();
-  S.settings=d.settings; S.status=d.status||S.status; drawList();
+function nudge(dx,dy){
+  const z=(st().zones||[])[S.sel]; if(!z)return; snap();
+  z.x+=dx/$('#img').clientWidth; z.y+=dy/$('#img').clientHeight; drawZones(); refresh();
 }
-function turnBox(b,a){  // рамка/зона після повороту кадру на 90°
+function setTool(t){
+  if(CR.on)return;
+  S.tool=S.tool===t?null:t; toolUI();
+}
+function toolUI(){
+  ['rect','ellipse','lasso','eye'].forEach(t=>$('#t-'+t).classList.toggle('on',S.tool===t));
+  document.body.classList.toggle('tool',!!S.tool);
+}
+// малювання нової зони мишею
+function createZone(e){
+  e.preventDefault();
+  const img=$('#img'), r=img.getBoundingClientRect(), W=r.width, H=r.height;
+  const fx=m=>(m.clientX-r.left)/W, fy=m=>(m.clientY-r.top)/H, tool=S.tool;
+  const x0=fx(e), y0=fy(e); const draw=$('#draw'); draw.innerHTML='';
+  draw.setAttribute('viewBox','0 0 '+W+' '+H);
+  snap();
+  const zs=st().zones=st().zones||[];
+  if(tool==='lasso'){
+    const pts=[[x0*W,y0*H]], pl=document.createElementNS('http://www.w3.org/2000/svg','polyline'); draw.appendChild(pl);
+    const mv=m=>{const p=[fx(m)*W,fy(m)*H],q=pts[pts.length-1]; if(Math.hypot(p[0]-q[0],p[1]-q[1])>=2){pts.push(p);pl.setAttribute('points',pts.map(p=>p.join(',')).join(' '))}};
+    const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up); draw.innerHTML='';
+      if(pts.length<3)return undoDrop();
+      let P=pts; if(P.length>300){const k=P.length/300;P=Array.from({length:300},(_,i)=>pts[Math.floor(i*k)])}
+      const xs=P.map(p=>p[0]),ys=P.map(p=>p[1]),bx=Math.min(...xs),by=Math.min(...ys),bw=Math.max(...xs)-bx,bh=Math.max(...ys)-by;
+      if(bw<6||bh<6)return undoDrop();
+      zs.push({shape:'lasso',x:bx/W,y:by/H,w:bw/W,h:bh/H,a:0,feather:.15,ev:.25,
+        pts:P.map(p=>[+((p[0]-bx)/bw).toFixed(4),+((p[1]-by)/bh).toFixed(4)])});
+      S.sel=zs.length-1; S.tool=null; toolUI(); drawZones(); refresh(true)};
+    document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up); return;
+  }
+  if(tool==='eye'){
+    const R0=Math.max(5,0.012*Math.max(W,H));
+    const z={shape:'eye',x:x0-R0/W,y:y0-R0/H,w:2*R0/W,h:2*R0/H}; zs.push(z); S.sel=zs.length-1; paintZones();
+    const mv=m=>{const R=Math.max(3,Math.hypot((fx(m)-x0)*W,(fy(m)-y0)*H)); if(R<4)return;
+      Object.assign(z,{x:x0-R/W,y:y0-R/H,w:2*R/W,h:2*R/H}); paintZones()};
+    const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);drawZones();refresh(true)};
+    document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up); return;
+  }
+  const z={shape:tool,x:x0,y:y0,w:.005,h:.005,a:0,feather:.3,ev:.25}; zs.push(z); S.sel=zs.length-1;
+  const mv=m=>{let w=(fx(m)-x0)*W,h=(fy(m)-y0)*H;
+    if(m.shiftKey){const s=Math.max(Math.abs(w),Math.abs(h));w=Math.sign(w||1)*s;h=Math.sign(h||1)*s}
+    z.x=Math.min(x0,x0+w/W);z.y=Math.min(y0,y0+h/H);z.w=Math.abs(w)/W;z.h=Math.abs(h)/H;paintZones()};
+  const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);
+    if(z.w*W<5||z.h*H<5){zs.pop();S.sel=-1;undoDrop();paintZones();return}
+    S.tool=null;toolUI();drawZones();refresh(true)};
+  document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+}
+$('#holder').addEventListener('mousedown',e=>{
+  if(e.button!==0||S.space)return;
+  if(CR.on){cropOutside(e);return}
+  if(S.tool){createZone(e);return}
+  if(e.target.closest('.zone,#wipe'))return;
+  if(S.sel>=0){S.sel=-1;drawZones()}
+  if(Z.k!=null){startPan(e);return}
+  if(S.view==='wipe'){dragWipe(e);return}
+  e.preventDefault(); holdOriginal(true);
+  const up=()=>{holdOriginal(false);document.removeEventListener('mouseup',up)};
+  document.addEventListener('mouseup',up);
+});
+$('#vp1').addEventListener('mousedown',e=>{   // поза кадром: зняти вибір / обертати рамку кадру / рухати збільшене
+  if(e.button!==0||S.space||e.target!==$('#vp1'))return;
+  if(CR.on){cropOutside(e);return}
+  if(Z.k!=null){startPan(e);return}
+  if(S.sel>=0){S.sel=-1;drawZones()}
+});
+
+// =================================================================== поворот на 90°
+function turnBox(b,a){  // рамка/зона після повороту кадру на 90° (нахил рамки не змінюється)
   return a>0?{...b,x:1-(b.y+b.h),y:b.x,w:b.h,h:b.w}:{...b,x:b.y,y:1-(b.x+b.w),w:b.h,h:b.w};
 }
-function rot(a){const s=st();s.rotate=(((s.rotate||0)+a)%360+360)%360;
+function turnZone(z,a){
+  const t=turnBox(z,a);
+  if(z.pts)t.pts=z.pts.map(([u,v])=>a>0?[+(1-v).toFixed(4),u]:[v,+(1-u).toFixed(4)]);
+  return t;
+}
+function rot(a){
+  if(!S.cur||CR.on)return; snap();
+  const s=st();s.rotate=(((s.rotate||0)+a)%360+360)%360;
   if(s.crop)s.crop=turnBox(s.crop,a);
-  s.zones=(s.zones||[]).map(z=>turnBox(z,a));
-  post('/api/settings',{file:S.cur,rotate:s.rotate,crop:s.crop||null,zones:s.zones}).then(()=>pick(S.cur))}
-// ---------- кадрування
-const CR={on:false,box:null,ar:0,land:false,iw:1,ih:1,url:null};
-const clamp=(v,a,b)=>Math.min(Math.max(v,a),b);
+  s.zones=(s.zones||[]).map(z=>turnZone(z,a));
+  post('/api/settings',{file:S.cur,rotate:s.rotate,crop:s.crop||null,zones:s.zones}).then(()=>reloadCur());
+}
+function reloadCur(){const f=S.cur;S.cur=null;pick(f)}
+
+// =================================================================== кадрування з нахилом
+const CR={on:false,b:null,ar:0,land:false,iw:1,ih:1,url:null,base:null,line:false};
 function cropTarget(){  // ширина/висота рамки в пікселях або 0 (вільно)
-  if(CR.ar<0)return CR.iw/CR.ih;
+  if(CR.ar<0)return CR.land?CR.ih/CR.iw:CR.iw/CR.ih;
   if(!CR.ar)return 0;
   return CR.land?1/CR.ar:CR.ar;
 }
+const ext=b=>{const r=b.a*D2R,c=Math.abs(Math.cos(r)),s=Math.abs(Math.sin(r));return [(b.w*c+b.h*s)/2,(b.w*s+b.h*c)/2]};
+function fitIn(b,W,H){   // рамка з нахилом цілком у кадрі: зменшуємо й зсуваємо
+  let [ex,ey]=ext(b); const k=Math.min(1,W/(2*ex),H/(2*ey));
+  const w=b.w*k,h=b.h*k; ex*=k; ey*=k;
+  return {...b,w,h,cx:clamp(b.cx,ex,W-ex),cy:clamp(b.cy,ey,H-ey)};
+}
+function inside(b,W,H){const [ex,ey]=ext(b),e=.6;return b.cx-ex>=-e&&b.cx+ex<=W+e&&b.cy-ey>=-e&&b.cy+ey<=H+e}
+const fromCrop=c=>c?{cx:(c.x+c.w/2)*CR.iw,cy:(c.y+c.h/2)*CR.ih,w:c.w*CR.iw,h:c.h*CR.ih,a:c.a||0}:{cx:CR.iw/2,cy:CR.ih/2,w:CR.iw,h:CR.ih,a:0};
+const toCrop=b=>({x:+((b.cx-b.w/2)/CR.iw).toFixed(5),y:+((b.cy-b.h/2)/CR.ih).toFixed(5),w:+(b.w/CR.iw).toFixed(5),h:+(b.h/CR.ih).toFixed(5),a:Math.round(b.a*100)/100});
+const crS=()=>$('#img').clientWidth/CR.iw;
+const scaleB=(b,s)=>({cx:b.cx*s,cy:b.cy*s,w:b.w*s,h:b.h*s,a:b.a});
 async function cropStart(){
   if(!S.cur||CR.on)return;
-  const r=await fetch('/api/before?file='+encodeURIComponent(S.cur)+'&full=1'); if(!r.ok)return;
+  if(S.view!=='single')setView(S.view);
+  S.tool=null;toolUI(); Z.k=null; S.side=1280;
+  const b=await loadBefore(S.cur,S.side,true); if(!b)return;
   if(CR.url)URL.revokeObjectURL(CR.url);
-  CR.url=URL.createObjectURL(await r.blob());
-  if(S.split)toggleSplit();
-  CR.on=true; document.body.classList.add('cropping');
+  CR.url=b.url; S.size=b.size;
+  CR.on=true; document.body.classList.add('cropping'); S.sel=-1; paintZones();
   const img=$('#img');
-  img.onload=()=>{CR.iw=img.naturalWidth;CR.ih=img.naturalHeight;
-    const c=st().crop; CR.box=c?{x:c.x,y:c.y,w:c.w,h:c.h}:{x:0,y:0,w:1,h:1};
-    CR.land=CR.box.w*CR.iw>CR.box.h*CR.ih; CR.ar=parseFloat($('#cropAr').value)||0;
-    if(!c&&CR.ar)cropAspect(); else paintCrop(); img.onload=paintZones;};
+  const ready=()=>{img.removeEventListener('load',ready);
+    CR.iw=img.naturalWidth;CR.ih=img.naturalHeight;
+    const c=st().crop; CR.b=fromCrop(c); CR.base=null;
+    CR.land=CR.b.w>CR.b.h; CR.ar=parseFloat($('#cropAr').value)||0;
+    if(!c&&CR.ar)cropAspect(); else paintCrop();};
+  img.addEventListener('load',ready);
   img.src=CR.url; $('#cap').textContent='весь кадр';
 }
 function cropAspect(){
   CR.ar=parseFloat($('#cropAr').value)||0;
-  const t=cropTarget(), b=CR.box; if(!t||!b)return paintCrop();
-  let w=1,h=w*CR.iw/(t*CR.ih); if(h>1){h=1;w=h*t*CR.ih/CR.iw}
-  const k=Math.min(1,Math.max(b.w/w,b.h/h)); w*=k; h*=k;
-  const cx=b.x+b.w/2, cy=b.y+b.h/2;
-  CR.box={x:clamp(cx-w/2,0,1-w),y:clamp(cy-h/2,0,1-h),w,h}; paintCrop();
+  const t=cropTarget(), b=CR.b; if(!t||!b)return paintCrop();
+  const h=Math.max(b.h,b.w/t), w=h*t;
+  CR.b=fitIn({...b,w,h},CR.iw,CR.ih); paintCrop();
 }
-function cropTurn(){CR.land=!CR.land; if(CR.ar>0)cropAspect()}
-function paintCrop(){
+function cropTurn(){CR.land=!CR.land; if(CR.ar)cropAspect(); else {const b=CR.b;CR.b=fitIn({...b,w:b.h,h:b.w},CR.iw,CR.ih);paintCrop()}}
+function cropSetA(a,from){CR.b=fitIn({...(from||CR.base||CR.b),a:clamp(a,-45,45)},CR.iw,CR.ih);paintCrop()}
+function paintCrop(rotating){
   document.querySelectorAll('.cropbox').forEach(e=>e.remove());
-  const img=$('#img'), b=CR.box; if(!CR.on||!b||!img.clientWidth)return;
-  const W=img.clientWidth, H=img.clientHeight, d=document.createElement('div');
-  d.className='cropbox'+(cropTarget()?' fixed':'');
-  Object.assign(d.style,{left:b.x*W+'px',top:b.y*H+'px',width:b.w*W+'px',height:b.h*H+'px'});
-  d.innerHTML='<div class="g"></div>'+['nw','n','ne','e','se','s','sw','w'].map(k=>'<div class="h '+k+'" data-k="'+k+'"></div>').join('');
-  d.onmousedown=e=>{e.preventDefault();e.stopPropagation();
-    const k=e.target.dataset.k||'', o={...CR.box}, sx=e.clientX, sy=e.clientY, t=cropTarget(), M=0.05;
-    const mv=m=>{const dx=(m.clientX-sx)/W, dy=(m.clientY-sy)/H; let x=o.x,y=o.y,w=o.w,h=o.h;
-      if(!k){x=clamp(o.x+dx,0,1-o.w);y=clamp(o.y+dy,0,1-o.h)}
-      else{
-        if(k.includes('w')){x=clamp(o.x+dx,0,o.x+o.w-M);w=o.x+o.w-x}
-        if(k.includes('e')){w=clamp(o.w+dx,M,1-o.x)}
-        if(k.includes('n')){y=clamp(o.y+dy,0,o.y+o.h-M);h=o.y+o.h-y}
-        if(k.includes('s')){h=clamp(o.h+dy,M,1-o.y)}
-        if(t){  // пропорції: висота за шириною, кут навпроти лишається на місці
-          h=w*CR.iw/(t*CR.ih);
-          const top=k.includes('n'), maxh=top?o.y+o.h:1-o.y;
-          if(h>maxh){h=maxh;w=h*t*CR.ih/CR.iw; if(k.includes('w'))x=o.x+o.w-w}
-          y=top?o.y+o.h-h:o.y;
-        }
-      }
-      CR.box={x,y,w,h}; paintCrop();};
-    const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up)};
-    document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);};
+  const b=CR.b; if(!CR.on||!b||!$('#img').clientWidth)return;
+  const d=el('div','cropbox'+(cropTarget()?' fixed':'')+(rotating?' rotating':''));
+  Object.assign(d.style,{left:(b.cx-b.w/2)/CR.iw*100+'%',top:(b.cy-b.h/2)/CR.ih*100+'%',width:b.w/CR.iw*100+'%',height:b.h/CR.ih*100+'%',transform:'rotate('+b.a+'deg)'});
+  d.innerHTML='<div class="g"></div>'+HANDLES.map(k=>'<div class="h '+k+'" data-k="'+k+'"></div>').join('')+'<div class="h rot" data-k="rot" title="Обернути (або тягніть поза рамкою)"></div>';
+  d.addEventListener('mousedown',e=>{if(e.button!==0||S.space)return; if(CR.line)return; cropDrag(e,e.target.dataset.k||'')});
   $('#holder').appendChild(d);
+  $('#cropA').value=b.a; $('#cropAv').textContent=(+b.a).toFixed(1)+'°';
 }
-function moveZones(oc,nc){  // зони прив'язані до кадрованого кадру — переносимо їх у нову рамку
-  const s=st(); s.zones=(s.zones||[]).map(z=>{
-    const ax=oc?oc.x+z.x*oc.w:z.x, ay=oc?oc.y+z.y*oc.h:z.y, aw=oc?z.w*oc.w:z.w, ah=oc?z.h*oc.h:z.h;
-    return nc?{...z,x:(ax-nc.x)/nc.w,y:(ay-nc.y)/nc.h,w:aw/nc.w,h:ah/nc.h}:{...z,x:ax,y:ay,w:aw,h:ah};});
+function cropDrag(e,k){
+  const s=crS(), W=CR.iw*s, H=CR.ih*s;
+  dragBox(e,scaleB(CR.b,s),k,{ratio:cropTarget(),min:12,amax:45,
+    fix:(b,kk)=>kk==='rot'||!kk?fitIn(b,W,H):(inside(b,W,H)?b:null),
+    set:b=>{CR.b=scaleB(b,1/s);paintCrop(k==='rot')},end:()=>paintCrop()});
 }
-function cropEnd(){CR.on=false;document.body.classList.remove('cropping');
-  document.querySelectorAll('.cropbox').forEach(e=>e.remove()); $('#img').onload=paintZones}
+function cropOutside(e){
+  e.preventDefault();
+  if(CR.line){   // лінія вирівнювання
+    const r=$('#img').getBoundingClientRect(), d=$('#draw'), x0=e.clientX-r.left, y0=e.clientY-r.top;
+    d.setAttribute('viewBox','0 0 '+r.width+' '+r.height); d.innerHTML='<line x1="'+x0+'" y1="'+y0+'" x2="'+x0+'" y2="'+y0+'"/>';
+    const ln=d.firstChild;
+    const mv=m=>{ln.setAttribute('x2',m.clientX-r.left);ln.setAttribute('y2',m.clientY-r.top)};
+    const up=m=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up); d.innerHTML='';
+      const dx=m.clientX-r.left-x0, dy=m.clientY-r.top-y0; cropLine(false);
+      if(Math.hypot(dx,dy)<10)return;
+      let a=Math.atan2(dy,dx)/D2R; while(a>45)a-=90; while(a<-45)a+=90;
+      const t=cropTarget()||CR.b.w/CR.b.h;
+      let w=CR.iw,h=w/t; if(h>CR.ih){h=CR.ih;w=h*t}
+      CR.b=fitIn({cx:CR.iw/2,cy:CR.ih/2,w,h,a:Math.round(a*10)/10},CR.iw,CR.ih); CR.base=null; paintCrop()};
+    document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up); return;
+  }
+  CR.base=null; cropDrag(e,'rot');
+}
+function cropLine(on){CR.line=on==null?!CR.line:on;$('#btnLine').classList.toggle('on',CR.line);document.body.classList.toggle('lineTool',CR.line)}
+const cropA=$('#cropA');
+cropA.addEventListener('pointerdown',()=>{CR.base={...CR.b}});
+cropA.addEventListener('input',()=>{cropSetA(parseFloat(cropA.value));$('#cropAv').textContent=(+cropA.value).toFixed(1)+'°'});
+cropA.addEventListener('dblclick',()=>{cropSetA(0,CR.b);CR.base=null});
+function moveZones(oc,nc){  // зони прив'язані до кадрованого кадру — переносимо їх у нову рамку (з нахилом)
+  const iw=CR.iw, ih=CR.ih;
+  const g=c=>c?{cx:(c.x+c.w/2)*iw,cy:(c.y+c.h/2)*ih,w:c.w*iw,h:c.h*ih,a:c.a||0}:{cx:iw/2,cy:ih/2,w:iw,h:ih,a:0};
+  const go=g(oc), gn=g(nc), s=st();
+  s.zones=(s.zones||[]).map(z=>{
+    const [px,py]=rotv((z.x+z.w/2-.5)*go.w,(z.y+z.h/2-.5)*go.h,go.a);
+    const [lx,ly]=rotv(go.cx+px-gn.cx,go.cy+py-gn.cy,-gn.a);
+    const w=z.w*go.w/gn.w, h=z.h*go.h/gn.h;
+    return {...z,x:lx/gn.w+.5-w/2,y:ly/gn.h+.5-h/2,w,h,a:Math.round(norm180((z.a||0)+go.a-gn.a)*10)/10};});
+}
+function cropEnd(){CR.on=false;cropLine(false);document.body.classList.remove('cropping');
+  document.querySelectorAll('.cropbox').forEach(e=>e.remove()); Z.k=null}
 async function cropSave(c){
-  const s=st(); moveZones(s.crop,c); s.crop=c; cropEnd();
-  await post('/api/settings',{file:S.cur,crop:c,zones:s.zones}); pick(S.cur);
+  snap(); const s=st(); moveZones(s.crop,c); s.crop=c; cropEnd();
+  await post('/api/settings',{file:S.cur,crop:c,zones:s.zones}); reloadCur();
 }
 function cropApply(){
-  if(!CR.on)return; const b=CR.box;
-  const whole=b.x<0.002&&b.y<0.002&&b.w>0.996&&b.h>0.996;
-  cropSave(whole?null:{x:+b.x.toFixed(5),y:+b.y.toFixed(5),w:+b.w.toFixed(5),h:+b.h.toFixed(5)});
+  if(!CR.on)return; const b=CR.b;
+  const whole=Math.abs(b.a)<.01&&b.w>=CR.iw*.996&&b.h>=CR.ih*.996;
+  cropSave(whole?null:toCrop(b));
 }
 function cropClear(){if(CR.on)cropSave(null)}
-function cropCancel(){if(!CR.on)return;cropEnd();pick(S.cur)}
-window.addEventListener('resize',()=>{if(CR.on)paintCrop()});
-function toggleSplit(){S.split=!S.split;document.body.classList.toggle('split',S.split);
-  $('#btnSplit').classList.toggle('on',S.split);paintZones()}
+function cropCancel(){if(!CR.on)return;cropEnd();reloadCur()}
+
+// =================================================================== скасування / повторення
+let HIST={};
+const cur=()=>{const s=st();return JSON.stringify({zones:s.zones||[],adjust:s.adjust||{},off:s.off||[],mode:s.mode||'auto',crop:s.crop||null,rotate:s.rotate||0})};
+function snap(){if(!S.cur)return;const h=HIST[S.cur]||(HIST[S.cur]={u:[],r:[]});const c=cur();if(h.u[h.u.length-1]!==c)h.u.push(c);if(h.u.length>100)h.u.shift();h.r=[]}
+function undoDrop(){const h=HIST[S.cur];if(h&&h.u.length&&h.u[h.u.length-1]===cur())h.u.pop()}
+function restore(js){
+  const o=JSON.parse(js), s=st(), reload=(s.rotate||0)!==o.rotate||JSON.stringify(s.crop||null)!==JSON.stringify(o.crop);
+  Object.assign(s,o); if(S.sel>=(s.zones||[]).length)S.sel=-1;
+  drawSliders();drawZones();drawHsl();
+  if(reload)syncSettings().then(reloadCur); else refresh(true);
+}
+function undo(){if(CR.on)return;const h=HIST[S.cur];if(!h||!h.u.length)return;h.r.push(cur());restore(h.u.pop())}
+function redo(){if(CR.on)return;const h=HIST[S.cur];if(!h||!h.r.length)return;h.u.push(cur());restore(h.r.pop())}
+
+// =================================================================== решта дій
+async function setMode(v){
+  const fs=picked();
+  if(fs.length>1){snap();
+    const d=await (await post('/api/mode',{files:fs,mode:v})).json();
+    fs.forEach(f=>{if(S.settings[f])S.settings[f].mode=v}); S.status=d.status||S.status; drawList(); drawStatus(); return}
+  snap(); st().mode=v; refresh(true);
+}
+function resetAll(){
+  snap(); const s=st(), hadCrop=!!s.crop;
+  s.zones=[];s.adjust={};s.off=[];s.mode='auto';s.crop=null;S.sel=-1;
+  drawSliders();drawZones();drawHsl();
+  if(hadCrop)post('/api/settings',{file:S.cur,crop:null,zones:[],adjust:{},off:[],mode:'auto'}).then(reloadCur);else refresh(true)
+}
+async function applyAll(){
+  if(!S.cur)return;
+  const to=S.picked.size>1?picked():null;
+  if(!to&&!confirm('Ручні поправки та вимкнені автоматичні значення цього фото буде застосовано до всіх '+S.files.length+' фото папки. Продовжити?'))return;
+  await doRefresh();
+  const d=await (await post('/api/apply_all',{from:S.cur,to})).json();
+  S.settings=d.settings; S.status=d.status||S.status; drawList();
+}
+async function openPs(exe){
+  const files=picked(); if(!files.length)return;
+  $('#prog').textContent='Відкриваю в Photoshop…';
+  const r=await (await post('/api/photoshop',{files,exe:exe||null})).json();
+  if(r.error==='not_found'){
+    const p=prompt('Не вдалося знайти Photoshop. Вкажіть шлях до Photoshop.exe (або до папки з ним), наприклад:\nC:\\Program Files\\Adobe\\Adobe Photoshop 2025\\Photoshop.exe');
+    $('#prog').textContent=''; if(p)openPs(p); return}
+  if(r.error){$('#prog').textContent='';return err(r.error)}
+  err(''); $('#prog').textContent='Відкрито в Photoshop: '+r.n+(r.processed?' (оброблених: '+r.processed+')':' (оригінали — обробки ще не було)');
+}
+function togglePanel(w,force){
+  const c=w==='l'?'lcol':'rcol', on=force!=null?force:!document.body.classList.contains(c);
+  document.body.classList.toggle(c,on); store(c,on);
+  $('#lcol').textContent=document.body.classList.contains('lcol')?'»':'«';
+  $('#rcol').textContent=document.body.classList.contains('rcol')?'«':'»';
+}
+function help(on){$('#help').classList.toggle('on',on)}
+
+// =================================================================== гарячі клавіші
+$('#list').addEventListener('mouseenter',()=>S.overList=true);
+$('#list').addEventListener('mouseleave',()=>S.overList=false);
+let overView=false;
+wrap.addEventListener('mouseenter',()=>overView=true); wrap.addEventListener('mouseleave',()=>overView=false);
 document.addEventListener('keydown',e=>{
-  if(CR.on){if(e.key==='Enter')cropApply();else if(e.key==='Escape')cropCancel();return}
-  if(e.key==='Delete'&&S.sel>=0){st().zones.splice(S.sel,1);S.sel=-1;drawZones();refresh(true)}});
-$('#img').addEventListener('mousedown',e=>{
-  if(CR.on){e.preventDefault();return}
-  const img=$('#img'), r=img.getBoundingClientRect();
-  if(!S.mode){ if(S.afterURL){img.src=S.beforeURL;$('#cap').textContent='оригінал';}
-    const up=()=>{if(S.afterURL){img.src=S.afterURL;$('#cap').textContent='після';}
-      document.removeEventListener('mouseup',up)};
-    document.addEventListener('mouseup',up); return; }
-  e.preventDefault();
-  const x0=(e.clientX-r.left)/r.width, y0=(e.clientY-r.top)/r.height;
-  const z={shape:S.mode,x:x0,y:y0,w:.01,h:.01,feather:.3,ev:.25,sat:0};
-  st().zones=st().zones||[]; st().zones.push(z); S.sel=st().zones.length-1;
-  const mv=m=>{z.w=Math.abs((m.clientX-r.left)/r.width-x0);z.h=Math.abs((m.clientY-r.top)/r.height-y0);
-    z.x=Math.min(x0,(m.clientX-r.left)/r.width);z.y=Math.min(y0,(m.clientY-r.top)/r.height);paintZones()};
-  const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);
-    S.mode=null;img.style.cursor='';drawZones();refresh(true)};
-  document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+  const t=e.target, code=e.code, ctrl=e.ctrlKey||e.metaKey, sh=e.shiftKey;
+  const typing=t.matches&&t.matches('input[type=text],input[type=number],textarea');
+  const inRange=t.matches&&t.matches('input[type=range],select');
+  if($('#help').classList.contains('on')){if(code==='Escape'||code==='F1'){e.preventDefault();help(false)}return}
+  if(code==='F1'||(code==='Slash'&&sh&&!typing)){e.preventDefault();help(true);return}
+  if(typing){
+    if(code==='Escape')t.blur();
+    if(code==='Enter'&&t.id==='path'){e.preventDefault();openFolder()}
+    return;
+  }
+  if(ctrl){
+    const k={KeyZ:()=>sh?redo():undo(),KeyY:redo,KeyO:()=>{$('#path').focus();$('#path').select()},
+      KeyS:()=>{if(!$('#btnSave').disabled)saveAll()},KeyE:()=>openPs(),KeyJ:dupZone,
+      KeyH:()=>{S.hideZones=!S.hideZones;paintZones()},
+      KeyA:()=>{if(S.overList||document.activeElement===$('#list'))pickAll()},KeyD:pickNone,
+      Digit0:zoomFit,Numpad0:zoomFit,Digit1:()=>zoom100(),Numpad1:()=>zoom100(),
+      Equal:()=>zoomTo((Z.k||L.fit)*1.25),NumpadAdd:()=>zoomTo((Z.k||L.fit)*1.25),
+      Minus:()=>zoomTo((Z.k||L.fit)/1.25),NumpadSubtract:()=>zoomTo((Z.k||L.fit)/1.25),
+      Enter:()=>runAll(),NumpadEnter:()=>runAll()}[code];
+    if(k){e.preventDefault();k()} return;
+  }
+  if(code==='Tab'){e.preventDefault();
+    if(sh)togglePanel('r'); else{const any=!document.body.classList.contains('lcol')||!document.body.classList.contains('rcol');togglePanel('l',any);togglePanel('r',any)}
+    return}
+  if(CR.on){
+    if(code==='Enter'||code==='NumpadEnter'){e.preventDefault();cropApply()}
+    else if(code==='Escape'){e.preventDefault();CR.line?cropLine(false):cropCancel()}
+    else if(code==='KeyX')cropTurn();
+    else if(code.startsWith('Arrow')&&!inRange){e.preventDefault();const d=(sh?10:1)/crS(),b=CR.b;
+      CR.b=fitIn({...b,cx:b.cx+(code==='ArrowLeft'?-d:code==='ArrowRight'?d:0),cy:b.cy+(code==='ArrowUp'?-d:code==='ArrowDown'?d:0)},CR.iw,CR.ih);paintCrop()}
+    return;
+  }
+  if(code==='Space'){if(overView){e.preventDefault();if(!S.space){S.space=true;document.body.classList.add('space')}}return}
+  if(code==='Backslash'){e.preventDefault();if(!e.repeat)holdOriginal(true);return}
+  if(inRange&&code.startsWith('Arrow'))return;
+  if(t===$('#list')&&(code==='ArrowUp'||code==='ArrowDown')){e.preventDefault();step(code==='ArrowUp'?-1:1,sh);return}
+  if(code.startsWith('Arrow')&&S.sel>=0){e.preventDefault();const d=sh?10:1;
+    nudge(code==='ArrowLeft'?-d:code==='ArrowRight'?d:0,code==='ArrowUp'?-d:code==='ArrowDown'?d:0);return}
+  const k={KeyC:cropStart,KeyM:()=>setTool(sh?'ellipse':'rect'),KeyL:()=>setTool('lasso'),KeyJ:()=>setTool('eye'),
+    KeyR:()=>rot(sh?-90:90),KeyY:()=>setView(sh?'wipe':'split'),
+    Delete:()=>{if(S.sel>=0)delZone(S.sel)},Backspace:()=>{if(S.sel>=0)delZone(S.sel)},
+    Escape:()=>{if(S.tool){S.tool=null;toolUI()}else if(S.sel>=0){S.sel=-1;drawZones()}},
+    ArrowLeft:()=>step(-1),ArrowRight:()=>step(1),ArrowUp:()=>step(-1),ArrowDown:()=>step(1),
+    PageUp:()=>step(-1),PageDown:()=>step(1)}[code];
+  if(k){e.preventDefault();k()}
 });
-$('#img').onload=paintZones; window.addEventListener('resize',paintZones);
+document.addEventListener('keyup',e=>{
+  if(e.code==='Space'&&S.space){S.space=false;document.body.classList.remove('space')}
+  if(e.code==='Backslash')holdOriginal(false);
+});
+window.addEventListener('blur',()=>{S.space=false;document.body.classList.remove('space');if(S.holding)holdOriginal(false)});
+
+// =================================================================== обробка й збереження
 async function runAll(){
   err(''); $('#btnProc').disabled=true; $('#btnSave').disabled=true;
   if(S.cur)await doRefresh();
@@ -510,7 +1142,7 @@ async function saveAll(){
   const r=await (await post('/api/save',{folder:$('#outdir').value.trim()||'оброблені',replace,copy_rest:$('#copyRest').checked})).json();
   if(r.error){$('#btnSave').disabled=false;return err(r.error)}
   poll(async()=>{const d=await (await fetch('/api/state')).json();S.status=d.status||S.status;S.settings=d.settings||S.settings;
-    drawList();if(S.cur&&replace)pick(S.cur);});
+    drawList();if(S.cur&&replace)reloadCur();});
 }
 function poll(done){
   const t=setInterval(async()=>{
@@ -528,5 +1160,9 @@ function poll(done){
 }
 $('#replace').checked=!!recall('replace',false);$('#copyRest').checked=recall('copyRest',true)!==false;
 $('#outdir').value=recall('outdir','оброблені')||'оброблені';$('#filter').value=recall('filter','all');saveMode();
+S.wipe.h=!!recall('wipeH',false); paintWipe();
+togglePanel('l',!!recall('lcol',false)); togglePanel('r',!!recall('rcol',false));
+if(recall('hsl',false))document.body.classList.add('hslOpen');
+drawHsl();
 fetch('/api/state').then(r=>r.json()).then(load);
 </script></body></html>

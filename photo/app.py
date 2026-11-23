@@ -2,10 +2,13 @@
 вимкнути кожне, ручні поправки, зони, поворот, обробка папки і збереження результату.
 Запуск:  python app.py [шлях_до_папки_з_фото]
 
+Фото беруться і з підпапок (наприклад, папки замовників усередині папки групи);
+у списку й у результаті зберігається та сама структура.
+
 Після відкриття папки програма аналізує кожне фото і позначає, яким обробка потрібна,
 а яким ні. Обробляються лише потрібні. Результат зберігається або окремою папкою
 (оригінали не змінюються), або замість оригіналів — на вибір."""
-import os, sys, json, io, shutil, threading, webbrowser, traceback, time
+import os, sys, json, io, shutil, threading, webbrowser, traceback, time, glob, subprocess
 from concurrent.futures import ProcessPoolExecutor
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -17,12 +20,14 @@ import enhance as E, runner as R, azart_io as IO
 
 HERE = E.res_dir()
 SETTINGS_FILE = 'azart-settings.json'
-TMP_DIR = '__azart_tmp'
+TMP_DIR = R.TMP_DIR
 PREVIEW_MAX = 1280
+SIDES = (PREVIEW_MAX, 2600, 0)      # розміри перегляду: звичайний, збільшений, повний (0)
 PING_VERSION = 2
 LOCK = threading.Lock()
-STATE = dict(src=None, files=[], small={}, info={}, wb={}, settings={}, job=None, scan=None,
-             workers=None, gen=0, processed=[])
+WANT = {}          # останній запитаний кадр «після» для кожного вікна
+STATE = dict(src=None, files=[], rel={}, small={}, info={}, wb={}, settings={}, job=None, scan=None,
+             workers=None, gen=0, processed=[], out={}, skip=())
 INFO_KEYS = ('white', 'black', 'gamma', 'temp', 'tint', 'whites', 'guard', 'light',
              'ev', 'shadows', 'highlights', 'contrast', 'sat')
 
@@ -30,6 +35,19 @@ INFO_KEYS = ('white', 'black', 'gamma', 'temp', 'tint', 'whites', 'guard', 'ligh
 # ------------------------------------------------------------------ налаштування
 def blank():
     return dict(zones=[], adjust={}, rotate=0, off=[], mode='auto', crop=None)
+
+
+def rel_of(f):
+    """Шлях фото відносно відкритої папки, через «/» (так його бачить вікно програми)."""
+    return os.path.relpath(f, STATE['src']).replace(os.sep, '/')
+
+
+def crop_dict(c):
+    b = IO.crop_box(c)
+    if b is None: return None
+    d = dict(zip(('x', 'y', 'w', 'h'), (round(v, 5) for v in b[:4])))
+    if b[4]: d['a'] = round(b[4], 3)
+    return d
 
 
 def crop_key(c):
@@ -50,7 +68,7 @@ def save_settings():
     data = {}
     for f, s in STATE['settings'].items():
         keep = {k: v for k, v in s.items() if v and not (k == 'mode' and v == 'auto')}
-        if keep: data[os.path.basename(f)] = keep
+        if keep: data[rel_of(f)] = keep
     p = os.path.join(STATE['src'], SETTINGS_FILE)
     try:
         if data: json.dump(data, open(p, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
@@ -63,21 +81,26 @@ def st_of(f):
     return STATE['settings'].setdefault(f, blank())
 
 
-def open_folder(src):
-    remember_folder(src)
-    files = R.files_in(src)
+def open_folder(src, skip=None):
+    """Відкриває папку разом із підпапками. skip — назва папки результату всередині неї:
+    її фото в список не беремо."""
+    if skip is None: skip = last_skip()
+    skip = tuple(x for x in ((skip,) if isinstance(skip, str) else skip) if x and not os.path.isabs(x))
+    remember_folder(src, skip)
+    files = R.files_in(src, skip=skip)
     saved = load_settings(src)
     with LOCK:
         STATE['gen'] += 1
-        STATE.update(src=src, files=files, small={}, info={}, wb={}, settings={}, job=None,
-                     processed=[], scan=dict(i=0, n=len(files), done=not files, name=''))
+        STATE.update(src=src, files=files, small={}, info={}, wb={}, settings={}, job=None, skip=skip,
+                     processed=[], out={}, scan=dict(i=0, n=len(files), done=not files, name=''))
+        STATE['rel'] = {rel_of(f): f for f in files}
         for f in files:
-            s = saved.get(os.path.basename(f)) or {}
+            s = saved.get(rel_of(f)) or {}
             STATE['settings'][f] = dict(zones=s.get('zones', []), adjust=s.get('adjust', {}),
                                         rotate=int(s.get('rotate', 0) or 0),
                                         off=[k for k in (s.get('off') or []) if k in E.AUTO_KEYS],
                                         mode=s.get('mode') if s.get('mode') in ('force', 'skip') else 'auto',
-                                        crop=s.get('crop') if crop_key(s.get('crop')) else None)
+                                        crop=crop_dict(s.get('crop')))
         gen = STATE['gen']
     if files: threading.Thread(target=scan_folder, args=(gen,), daemon=True).start()
     return files
@@ -112,7 +135,7 @@ def scan_folder(gen):
         def prog(i, n, p, r):
             if not alive(): return
             with LOCK:
-                STATE['scan'].update(i=i, n=n, name=os.path.basename(p))
+                STATE['scan'].update(i=i, n=n, name=rel_of(p))
                 if p not in STATE['info'] or STATE['info'][p].get('key') is None:
                     STATE['info'][p] = dict(r=r, key=(sets[p]['rotate'], tuple(sorted(sets[p]['off'] or ())), None,
                                                       crop_key(sets[p].get('crop'))))
@@ -135,15 +158,24 @@ def scan_folder(gen):
 
 
 # ------------------------------------------------------------------ прев'ю
-def small_image(f, full=False):
-    """Зменшений кадр для перегляду; full — без кадрування (для вибору рамки)."""
+def small_image(f, full=False, side=PREVIEW_MAX):
+    """Зменшений кадр для перегляду; full — без кадрування (для вибору рамки);
+    side — більша сторона (0 — повний розмір, для збільшення колесом миші)."""
     s = st_of(f)
     crop = None if full else s.get('crop')
-    key = (f, s['rotate'], crop_key(crop))
-    if STATE['small'].get('key') != key:
-        arr, _ = IO.load(f, s['rotate'], max_side=PREVIEW_MAX, crop=crop)
-        STATE['small'] = dict(key=key, arr=arr)
-    return STATE['small']['arr']
+    key = (f, s['rotate'], crop_key(crop), side)
+    cache = STATE['small']
+    if key not in cache:
+        arr, _ = IO.load(f, s['rotate'], max_side=side or None, crop=crop)
+        if len(cache) >= 4: cache.pop(next(iter(cache)))
+        cache[key] = arr
+    return cache[key]
+
+
+def side_of(q):
+    try: v = int((q.get('side') or [PREVIEW_MAX])[0])
+    except ValueError: v = PREVIEW_MAX
+    return v if v in SIDES else PREVIEW_MAX
 
 
 def analysis(f):
@@ -194,11 +226,14 @@ def batch():
         shutil.rmtree(tmp, ignore_errors=True); os.makedirs(tmp, exist_ok=True)
         with LOCK:
             todo = []
+            STATE['out'] = {f: o for f, o in STATE['out'].items() if not o.startswith(tmp+os.sep)}
             for f in STATE['files']:
                 inf = STATE['info'].get(f); s = st_of(f)
                 if not R.wanted(inf['r'] if inf else None, s): continue
                 r = inf['r'] if inf and inf.get('key') == key_of(f) and 'error' not in inf['r'] else None
-                todo.append((f, os.path.join(tmp, os.path.basename(f)), r, s.get('zones'), s.get('adjust'),
+                out = os.path.join(tmp, os.path.relpath(f, src))      # та сама структура підпапок
+                os.makedirs(os.path.dirname(out), exist_ok=True)
+                todo.append((f, out, r, s.get('zones'), s.get('adjust'),
                              tuple(s.get('off') or ()), s.get('rotate') or 0, STATE['wb'].get(f), s.get('crop')))
         STATE['job'] = dict(stage='process', done=False, i=0, n=len(todo), name='', errors=[],
                             skipped=len(STATE['files'])-len(todo), workers=workers_n())
@@ -206,9 +241,11 @@ def batch():
         mp, ex = mapper_for(min(workers_n(), max(len(todo), 1)))
         try:
             for k, err in enumerate(mp(R.work, todo)):
-                STATE['job'].update(i=k+1, name=os.path.basename(todo[k][0]))
+                STATE['job'].update(i=k+1, name=rel_of(todo[k][0]))
                 if err: STATE['job']['errors'].append(err)
-                else: STATE['processed'].append(todo[k][0])
+                else:
+                    STATE['processed'].append(todo[k][0])
+                    STATE['out'][todo[k][0]] = todo[k][1]
         finally:
             if ex: ex.shutdown()
         STATE['job'].update(done=True, tmp=tmp)
@@ -216,14 +253,22 @@ def batch():
         STATE['job'] = dict(stage='process', done=True, error=traceback.format_exc())
 
 
+def tmp_names(tmp):
+    """Оброблені файли в тимчасовій папці: шляхи відносно неї (з підпапками)."""
+    out = []
+    for root, _, names in os.walk(tmp):
+        out += [os.path.relpath(os.path.join(root, n), tmp) for n in names]
+    return sorted(out)
+
+
 def save_results(folder, replace=False, copy_rest=True):
     """Переносить оброблені фото: у папку результату (оригінали не змінюються)
     або замість оригіналів. В окрему папку можна докласти й фото без змін — тоді
-    там буде повний набір."""
+    там буде повний набір. Структура підпапок зберігається."""
     src = STATE['src']; tmp = os.path.join(src, TMP_DIR)
     STATE['job'] = dict(stage='save', done=False, i=0, n=0, name='', replace=bool(replace))
     try:
-        names = sorted(os.listdir(tmp)) if os.path.isdir(tmp) else []
+        names = tmp_names(tmp) if os.path.isdir(tmp) else []
         if replace:
             STATE['job']['n'] = len(names)
             for k, nm in enumerate(names):
@@ -234,7 +279,8 @@ def save_results(folder, replace=False, copy_rest=True):
                     STATE['settings'][f] = blank()
                     STATE['info'][f] = dict(r=dict(mark=True, needs=False, changes=[]), key=None)
                     STATE['wb'].pop(f, None)
-                    if STATE['small'].get('key', (None,))[0] == f: STATE['small'] = {}
+                    STATE['out'][f] = f
+                    STATE['small'] = {k2: v for k2, v in STATE['small'].items() if k2[0] != f}
                 STATE['job'].update(i=k+1, name=nm)
             save_settings()
             dst = src
@@ -243,21 +289,84 @@ def save_results(folder, replace=False, copy_rest=True):
             os.makedirs(dst, exist_ok=True)
             rest = []
             if copy_rest:
-                done = set(names)
-                rest = [f for f in STATE['files'] if os.path.basename(f) not in done
-                        and not os.path.exists(os.path.join(dst, os.path.basename(f)))]
+                done = {os.path.normcase(n) for n in names}
+                rest = [f for f in STATE['files'] if os.path.normcase(os.path.relpath(f, src)) not in done
+                        and not os.path.exists(os.path.join(dst, os.path.relpath(f, src)))]
             STATE['job']['n'] = len(names)+len(rest)
             for k, nm in enumerate(names):
-                shutil.move(os.path.join(tmp, nm), os.path.join(dst, nm))
+                to = os.path.join(dst, nm)
+                os.makedirs(os.path.dirname(to), exist_ok=True)
+                shutil.move(os.path.join(tmp, nm), to)
+                f = os.path.join(src, nm)
+                if f in STATE['settings']: STATE['out'][f] = to
                 STATE['job'].update(i=k+1, name=nm)
             for k, f in enumerate(rest):
-                shutil.copy2(f, os.path.join(dst, os.path.basename(f)))     # точна копія, без перестиснення
-                STATE['job'].update(i=len(names)+k+1, name=os.path.basename(f))
+                to = os.path.join(dst, os.path.relpath(f, src))
+                os.makedirs(os.path.dirname(to), exist_ok=True)
+                shutil.copy2(f, to)     # точна копія, без перестиснення
+                STATE['job'].update(i=len(names)+k+1, name=rel_of(f))
         shutil.rmtree(tmp, ignore_errors=True)
         STATE['processed'] = []
         STATE['job'].update(done=True, dst=dst, saved=len(names))
     except Exception:
         STATE['job'] = dict(stage='save', done=True, error=traceback.format_exc())
+
+
+# ------------------------------------------------------------------ Photoshop
+def find_photoshop():
+    """Шлях до Photoshop: збережений користувачем, з реєстру Windows або зі стандартних папок."""
+    saved = recent().get('photoshop')
+    if saved and os.path.exists(saved): return saved
+    found = []
+    if os.name == 'nt':
+        try:
+            import winreg
+            for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+                try:
+                    with winreg.OpenKey(hive, r'Software\Microsoft\Windows\CurrentVersion\App Paths\Photoshop.exe') as k:
+                        found.append(winreg.QueryValue(k, None))
+                except OSError: pass
+            try:
+                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r'SOFTWARE\Adobe\Photoshop') as k:
+                    for i in range(winreg.QueryInfoKey(k)[0]):
+                        try:
+                            with winreg.OpenKey(k, winreg.EnumKey(k, i)) as v:
+                                found.append(os.path.join(winreg.QueryValueEx(v, 'ApplicationPath')[0], 'Photoshop.exe'))
+                        except OSError: pass
+            except OSError: pass
+        except Exception:
+            pass
+        for base in {os.environ.get('ProgramFiles', r'C:\Program Files'), os.environ.get('ProgramW6432', r'C:\Program Files'),
+                     os.environ.get('ProgramFiles(x86)', r'C:\Program Files (x86)')}:
+            found += sorted(glob.glob(os.path.join(base, 'Adobe', 'Adobe Photoshop*', 'Photoshop.exe')), reverse=True)
+    elif sys.platform == 'darwin':
+        found += sorted(glob.glob('/Applications/Adobe Photoshop*/Adobe Photoshop*.app'), reverse=True)
+    found = [f.strip('"') for f in found if f]
+    ok = [f for f in found if os.path.exists(f)]
+    # найновіша версія: «Adobe Photoshop 2025» новіша за «2024» і за «CC 2019»
+    ok.sort(key=lambda f: R._natural(f), reverse=True)
+    return ok[0] if ok else None
+
+
+def open_in_photoshop(paths, exe=None):
+    """Відкриває фото в Photoshop (якщо він уже відкритий — у ньому ж)."""
+    exe = exe or find_photoshop()
+    if not exe: return None
+    for i in range(0, len(paths), 20):        # частинами: довжина команди в Windows обмежена
+        part = paths[i:i+20]
+        if sys.platform == 'darwin':
+            subprocess.Popen(['open', '-a', exe] + part)
+        else:
+            flags = getattr(subprocess, 'DETACHED_PROCESS', 0) | getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)
+            subprocess.Popen([exe] + part, close_fds=True, creationflags=flags if os.name == 'nt' else 0)
+        if i+20 < len(paths): time.sleep(1.5)
+    return exe
+
+
+def photoshop_file(f):
+    """Що відкривати: оброблене фото, якщо воно вже є, інакше оригінал."""
+    o = STATE['out'].get(f)
+    return (o, True) if o and os.path.exists(o) else (f, False)
 
 
 # ------------------------------------------------------------------ сервер
@@ -282,15 +391,14 @@ class H(BaseHTTPRequestHandler):
 
     def _pack(self):
         with LOCK:
-            return dict(src=STATE['src'], files=[os.path.basename(f) for f in STATE['files']],
-                        settings={os.path.basename(f): STATE['settings'][f] for f in STATE['files']},
-                        status={os.path.basename(f): status_of(f) for f in STATE['files']},
+            return dict(src=STATE['src'], files=[rel_of(f) for f in STATE['files']],
+                        settings={rel_of(f): STATE['settings'][f] for f in STATE['files']},
+                        status={rel_of(f): status_of(f) for f in STATE['files']},
                         scan=STATE['scan'], cores=os.cpu_count() or 2, workers=workers_n(),
-                        tmp=bool(STATE['processed']))
+                        tmp=bool(STATE['processed']), skip=list(STATE['skip']))
 
     def _file(self, q):
-        f = os.path.join(STATE['src'] or '', (q.get('file') or [''])[0])
-        return f if f in STATE['settings'] else None
+        return STATE['rel'].get((q.get('file') or [''])[0])
 
     def do_GET(self):
         u = urlparse(self.path); q = parse_qs(u.query)
@@ -304,17 +412,30 @@ class H(BaseHTTPRequestHandler):
             if u.path == '/api/open':
                 p = q.get('path', [''])[0].strip().strip('"')
                 if not os.path.isdir(p): return self._json(dict(error='Папку не знайдено: '+p), 400)
-                open_folder(p); return self._json(self._pack())
+                open_folder(p, q.get('skip', [None])[0]); return self._json(self._pack())
             if u.path in ('/api/before', '/api/after'):
                 f = self._file(q)
                 if not f: return self._json(dict(error='немає файлу'), 404)
+                side = side_of(q)
+                # поки чекали на обробку попереднього, вікно могло вже попросити новіший кадр:
+                # тоді цей не рахуємо (інакше при русі повзунка на великому масштабі набирається черга)
+                sid, tok = q.get('sid', [''])[0][:40], int(q.get('tok', ['0'])[0] or 0)
+                if u.path == '/api/after' and sid:
+                    WANT[sid] = max(WANT.get(sid, 0), tok)
                 with LOCK:
-                    if u.path == '/api/before':
-                        return self._send(200, jpeg(small_image(f, full=q.get('full', [''])[0] == '1')), 'image/jpeg')
+                    if u.path == '/api/after' and sid and tok < WANT.get(sid, 0):
+                        return self._send(204, b'', 'text/plain')
                     s = st_of(f)
+                    if u.path == '/api/before':
+                        full = q.get('full', [''])[0] == '1'
+                        try: W, H = IO.full_size(f, s['rotate'], None if full else s.get('crop'))
+                        except Exception: W = H = 0
+                        return self._send(200, jpeg(small_image(f, full=full, side=side), 90 if side != PREVIEW_MAX else 86),
+                                          'image/jpeg', {'X-Size': '%d,%d' % (W, H)})
                     base = analysis(f)
                     r = E.with_adjust(base, s.get('adjust'), s.get('off'))
-                    body = jpeg(E.render(small_image(f), r, zones=s.get('zones')))
+                    body = jpeg(E.render(small_image(f, side=side), r, zones=s.get('zones')),
+                                90 if side != PREVIEW_MAX else 86)
                     info = dict(values={k: r.get(k) for k in INFO_KEYS},
                                 auto={k: base.get(k) for k in E.AUTO_KEYS},
                                 changes=base.get('changes') or [], off=list(s.get('off') or []),
@@ -324,6 +445,8 @@ class H(BaseHTTPRequestHandler):
                                   {'X-Info': json.dumps(info), 'X-Token': q.get('tok', [''])[0]})
             if u.path == '/api/progress':
                 return self._json(STATE['job'] or dict(done=True, stage='none'))
+            if u.path == '/api/photoshop':
+                return self._json(dict(exe=find_photoshop()))
         except Exception:
             return self._json(dict(error=traceback.format_exc()), 500)
         self._send(404, b'not found', 'text/plain')
@@ -333,25 +456,44 @@ class H(BaseHTTPRequestHandler):
         data = json.loads(self.rfile.read(int(self.headers.get('Content-Length') or 0)) or b'{}')
         try:
             if u.path == '/api/settings':
-                f = os.path.join(STATE['src'] or '', data.get('file') or '')
-                if f not in STATE['settings']: return self._json(dict(error='немає файлу'), 404)
+                f = STATE['rel'].get(data.get('file') or '')
+                if not f: return self._json(dict(error='немає файлу'), 404)
                 with LOCK:
                     s = st_of(f)
                     for k in ('zones', 'adjust', 'rotate'):
                         if k in data: s[k] = data[k]
-                    if 'crop' in data:
-                        c = IO.crop_box(data['crop'])
-                        s['crop'] = None if c is None else dict(zip(('x', 'y', 'w', 'h'), (round(v, 5) for v in c)))
+                    if 'crop' in data: s['crop'] = crop_dict(data['crop'])
                     if 'off' in data: s['off'] = [k for k in data['off'] if k in E.AUTO_KEYS]
                     if data.get('mode') in ('auto', 'force', 'skip'): s['mode'] = data['mode']
                 save_settings(); return self._json(dict(ok=True, status=status_of(f)))
             if u.path == '/api/apply_all':
                 with LOCK:
-                    s = st_of(os.path.join(STATE['src'], data['from']))
-                    for f in STATE['files']:
+                    s = st_of(STATE['rel'][data['from']])
+                    to = [STATE['rel'][x] for x in data.get('to') or () if x in STATE['rel']] or STATE['files']
+                    for f in to:
                         st_of(f)['adjust'] = dict(s.get('adjust', {}))
                         st_of(f)['off'] = list(s.get('off') or [])
                 save_settings(); return self._json(self._pack())
+            if u.path == '/api/mode':
+                with LOCK:
+                    if data.get('mode') in ('auto', 'force', 'skip'):
+                        for x in data.get('files') or ():
+                            if x in STATE['rel']: st_of(STATE['rel'][x])['mode'] = data['mode']
+                save_settings(); return self._json(self._pack())
+            if u.path == '/api/photoshop':
+                exe = (data.get('exe') or '').strip().strip('"') or None
+                if exe:
+                    if os.path.isdir(exe):
+                        c = glob.glob(os.path.join(exe, 'Photoshop.exe')) + glob.glob(os.path.join(exe, '*.app'))
+                        exe = c[0] if c else exe
+                    if not os.path.exists(exe): return self._json(dict(error='Файл не знайдено: '+exe), 400)
+                    remember(photoshop=exe)
+                files = [STATE['rel'][x] for x in data.get('files') or () if x in STATE['rel']]
+                if not files: return self._json(dict(error='Не вибрано фото'), 400)
+                with LOCK: picked = [photoshop_file(f) for f in files]
+                used = open_in_photoshop([p for p, _ in picked], exe)
+                if not used: return self._json(dict(error='not_found'))
+                return self._json(dict(ok=True, exe=used, n=len(picked), processed=sum(1 for _, d in picked if d)))
             if u.path == '/api/process':
                 if (STATE['job'] or {}).get('done') is False:
                     return self._json(dict(error='Обробка вже йде'), 409)
@@ -375,17 +517,28 @@ PROTOCOL = 'azart'
 RECENT = os.path.join(os.path.expanduser('~'), '.azart-photo.json')
 
 
-def remember_folder(src):
-    try: json.dump({'last': src}, open(RECENT, 'w', encoding='utf-8'), ensure_ascii=False)
+def recent():
+    try: return json.load(open(RECENT, encoding='utf-8')) or {}
+    except Exception: return {}
+
+
+def remember(**kw):
+    d = recent(); d.update(kw)
+    try: json.dump(d, open(RECENT, 'w', encoding='utf-8'), ensure_ascii=False)
     except Exception: pass
 
 
+def remember_folder(src, skip=()):
+    remember(last=src, skip=list(skip))
+
+
+def last_skip():
+    return tuple(recent().get('skip') or ('оброблені',))
+
+
 def last_folder():
-    try:
-        d = json.load(open(RECENT, encoding='utf-8')).get('last')
-        return d if d and os.path.isdir(d) else None
-    except Exception:
-        return None
+    d = recent().get('last')
+    return d if d and os.path.isdir(d) else None
 
 
 def register_protocol():
