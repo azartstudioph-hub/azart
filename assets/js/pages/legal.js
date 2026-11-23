@@ -25,8 +25,7 @@ function render(biz) {
   const c = CONFIG.CONTACT || {};
   const values = {
     site: location.host || 'AZART',
-    name: biz.name, taxId: biz.taxId, address: biz.address, email: biz.email,
-    deliveryDays: biz.deliveryDays || '14'
+    name: biz.name, taxId: biz.taxId, address: biz.address, email: biz.email
   };
   const missing = [];
   const part = (x) => {

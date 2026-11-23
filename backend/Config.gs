@@ -113,20 +113,23 @@ var SETTINGS_DEFAULTS = {
   // оплата карткою через LiqPay: off - вимкнено; test - тестовий режим (гроші не списуються); on - справжні оплати
   cardPayments: 'off',
   // дані для сторінок «Публічна оферта», «Контакти» тощо
-  fopName: '', fopTaxId: '', fopAddress: '', fopEmail: '',
-  // за скільки робочих днів після закриття бланка готові друковані фото
-  deliveryDays: '14'
+  fopName: '', fopTaxId: '', fopAddress: '', fopEmail: ''
 };
 
 /** Текстові налаштування: найбільша довжина. */
-var SETTINGS_TEXT = { fopName: 120, fopTaxId: 20, fopAddress: 200, fopEmail: 100, deliveryDays: 3 };
+var SETTINGS_TEXT = { fopName: 120, fopTaxId: 20, fopAddress: 200, fopEmail: 100 };
 
 // ---------------------------------------------------------------
 // Властивості скрипту (Project Settings → Script properties)
 // ---------------------------------------------------------------
 
 var PROPS = {
-  ADMIN_PASSWORD: 'ADMIN_PASSWORD',        // пароль адміністратора (ОБОВ'ЯЗКОВО)
+  // Вхід адміністратора через Google:
+  GOOGLE_CLIENT_ID: 'GOOGLE_CLIENT_ID',    // OAuth Client ID (такий самий, як у config.js сайту)
+  ADMIN_EMAILS: 'ADMIN_EMAILS',            // адреси адміністраторів через кому; порожньо — власник скрипта
+  // Лише для локальної розробки (емулятор): вхід за паролем. На справжньому сервері не задавайте.
+  ADMIN_PASSWORD: 'ADMIN_PASSWORD',
+  DEV_PASSWORD_LOGIN: 'DEV_PASSWORD_LOGIN',
   TOKEN_SECRET: 'TOKEN_SECRET',            // створюється автоматично
   SHEET_ID: 'SHEET_ID',                    // якщо скрипт не прив'язаний до таблиці
   GROUP_PHOTOS_FOLDER_ID: 'GROUP_PHOTOS_FOLDER_ID',

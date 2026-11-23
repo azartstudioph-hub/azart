@@ -181,7 +181,11 @@ function apiChoosePayment_(req) {
     if (!serverUrl) fail_('NOT_CONFIGURED', 'Не вдалося визначити адресу сервера для LiqPay (Script properties → LIQPAY_SERVER_URL).');
 
     var album = findAlbum_(order.albumId);
-    var desc = 'AZART: ' + [album ? album.title : '', order.groupName, order.clientName].filter(Boolean).join(', ');
+    // Призначення платежу: «За фотопослуги: Сад 1, Свято осені, Сонечко, Іваненко Марія»
+    var title = album ? String(album.title || '') : '';
+    var kg = album ? String(album.kindergarten || '') : '';
+    if (kg && title.toLowerCase().indexOf(kg.toLowerCase()) >= 0) kg = '';
+    var desc = 'За фотопослуги: ' + [kg, title, order.groupName, order.clientName].filter(Boolean).join(', ');
     var ref = order.id + '_' + Date.now().toString(36);
     var params = {
       version: 3,

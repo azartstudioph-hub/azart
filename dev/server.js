@@ -4,7 +4,7 @@
  * Локальний dev-сервер: статичні файли сайту + емульований бекенд Apps Script (/exec)
  * + імітація Google Drive API (/drive/v3/files) і зображень (/dev-img/...).
  *
- *   node dev/server.js [порт]         → http://localhost:8080   (адмін-пароль: admin)
+ *   node dev/server.js [порт]         → http://localhost:8080   (вхід адміна: імітація кнопки Google)
  *
  * Це лише для розробки і тестів. На GitHub Pages ці файли не потрібні.
  */
@@ -17,6 +17,27 @@ const drive = require('./mock-drive');
 const { createMockLiqpay } = require('./mock-liqpay');
 
 const ROOT = path.join(__dirname, '..');
+const DEV_CLIENT_ID = 'dev-client-id';
+
+// Імітація кнопки «Увійти через Google» (Google Identity Services) для розробки:
+// кнопка .dev-gsi-btn «входить» адресою з localStorage.dev_google_email (за замовчуванням — власник).
+const DEV_GSI = `(() => {
+  let cb = null, aud = '';
+  const b64 = (s) => btoa(String.fromCharCode(...new TextEncoder().encode(s))).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');
+  window.google = { accounts: { id: {
+    initialize(o) { cb = o.callback; aud = o.client_id; },
+    renderButton(el) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'dev-gsi-btn'; b.textContent = 'Увійти через Google (dev)';
+      b.onclick = () => {
+        const email = localStorage.getItem('dev_google_email') || 'azartstudioph@gmail.com';
+        cb && cb({ credential: 'dev.' + b64(JSON.stringify({ email, aud, email_verified: 'true', iss: 'accounts.google.com' })) });
+      };
+      el.replaceChildren(b);
+    },
+    prompt() {}, disableAutoSelect() {}
+  } } };
+})();`;
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png',
@@ -30,6 +51,7 @@ function start({ port = 8080, latency = 0, withSeed = true, quiet = false, gasOp
   const seeded = withSeed ? seed(gas) : (gas.props.ADMIN_PASSWORD = 'admin', gas.run('setup'), null);
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // тестові ключі імітації LiqPay; режим оплати карткою — параметр payments ('off' | 'test' | 'on')
+  gas.props.GOOGLE_CLIENT_ID = DEV_CLIENT_ID;
   gas.props.LIQPAY_PUBLIC_KEY = liqpay.PUBLIC_KEY;
   gas.props.LIQPAY_PRIVATE_KEY = liqpay.PRIVATE_KEY;
   if (payments !== 'off' && seeded) {
@@ -72,6 +94,11 @@ function start({ port = 8080, latency = 0, withSeed = true, quiet = false, gasOp
         return res.end(svg);
       }
 
+      if (url.pathname === '/__dev/gsi.js') {
+        res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-store' });
+        return res.end(DEV_GSI);
+      }
+
       if (url.pathname === '/__dev/state') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ seeded: seeded && { token: seeded.token, albums: seeded.albums } }));
@@ -93,7 +120,9 @@ function start({ port = 8080, latency = 0, withSeed = true, quiet = false, gasOp
         let src = fs.readFileSync(file, 'utf8');
         src = src.replace(/API_URL: '[^']*'/, "API_URL: '/exec'")
           .replace(/DRIVE_API_KEY: '[^']*'/, "DRIVE_API_KEY: 'dev-key'")
-          .replace(/DRIVE_API_BASE: '[^']*'/, "DRIVE_API_BASE: '/drive/v3/files'");
+          .replace(/DRIVE_API_BASE: '[^']*'/, "DRIVE_API_BASE: '/drive/v3/files'")
+          .replace(/GOOGLE_CLIENT_ID: '[^']*'/, `GOOGLE_CLIENT_ID: '${DEV_CLIENT_ID}'`)
+          .replace(/GSI_SRC: '[^']*'/, "GSI_SRC: '/__dev/gsi.js'");
         res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-store' });
         return res.end(src);
       }
@@ -110,7 +139,7 @@ function start({ port = 8080, latency = 0, withSeed = true, quiet = false, gasOp
       const actualPort = server.address().port;
       gas.props.LIQPAY_BASE = `http://localhost:${actualPort}/__liqpay`;
       gas.props.LIQPAY_SERVER_URL = `http://localhost:${actualPort}/exec`;
-      if (!quiet) console.log(`AZART dev-сервер: http://localhost:${actualPort}  (адмін-пароль: admin)`);
+      if (!quiet) console.log(`AZART dev-сервер: http://localhost:${actualPort}  (вхід адміна: кнопка «Увійти через Google (dev)»)`);
       resolve({ server, gas, liqpay, port: actualPort, url: `http://localhost:${actualPort}`, seeded, close: () => new Promise((r) => server.close(r)) });
     });
   });

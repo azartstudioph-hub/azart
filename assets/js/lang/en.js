@@ -420,7 +420,6 @@ export default {
   "set.fopTaxId": "Tax ID (RNOKPP)",
   "set.fopAddress": "Address",
   "set.fopEmail": "Contact email",
-  "set.deliveryDays": "Prints ready in, working days",
   "legal.nav": "Terms and contacts",
   "legal.missing": "[not set]",
   "legal.adminMissing": "Some details are not filled in yet (marked “[not set]”). Fill them in the admin page: Site settings → Details for the offer and contacts.",
