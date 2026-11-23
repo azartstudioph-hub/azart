@@ -94,8 +94,8 @@ function tokenKey_() {
     secret = Utilities.getUuid() + Utilities.getUuid();
     setProp_(PROPS.TOKEN_SECRET, secret);
   }
-  // Зміна пароля автоматично анулює всі видані токени.
-  return secret + '|' + prop_(PROPS.ADMIN_PASSWORD);
+  // Зміна списку адміністраторів автоматично анулює всі видані входи.
+  return secret + '|' + adminEmails_().join(',');
 }
 
 function sign_(text) {
@@ -120,7 +120,6 @@ function makeToken_() {
 
 function isAdmin_(token) {
   if (!token || typeof token !== 'string' || token.length > 500) return false;
-  if (!prop_(PROPS.ADMIN_PASSWORD)) return false;
   var parts = token.split('.');
   if (parts.length !== 2) return false;
   if (!safeEqual_(sign_(parts[0]), parts[1])) return false;
@@ -141,23 +140,77 @@ function rateLimit_(bucket, max, windowSec) {
   return true;
 }
 
-function apiLogin_(req) {
-  var expected = prop_(PROPS.ADMIN_PASSWORD);
-  if (!expected) fail_('NOT_CONFIGURED', 'Пароль адміністратора не задано (Script properties → ADMIN_PASSWORD).');
+/** Адреси, яким дозволено вхід: ADMIN_EMAILS або (якщо порожньо) власник скрипта. */
+function adminEmails_() {
+  var list = prop_(PROPS.ADMIN_EMAILS).split(/[\s,;]+/)
+    .map(function (e) { return e.trim().toLowerCase(); })
+    .filter(function (e) { return e.indexOf('@') > 0; });
+  if (list.length) return list;
+  var owner = '';
+  try { owner = String(Session.getEffectiveUser().getEmail() || '').toLowerCase(); } catch (e) { owner = ''; }
+  return owner ? [owner] : [];
+}
 
+function loginFailed_(cache, fails, code, message) {
+  cache.put('loginFails', String(fails + 1), AZART.LOGIN_WINDOW_SEC);
+  Utilities.sleep(300);
+  fail_(code, message);
+}
+
+/** Перевірка ID-токена Google через службу Google (підпис, термін дії). Повертає вміст токена. */
+function googleTokenInfo_(credential) {
+  var res = UrlFetchApp.fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(credential),
+    { muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) return null;
+  try { return JSON.parse(res.getContentText()); } catch (e) { return null; }
+}
+
+function apiLogin_(req) {
   var cache = CacheService.getScriptCache();
   var fails = Number(cache.get('loginFails') || 0);
   if (fails >= AZART.LOGIN_MAX_FAILS) {
     fail_('TOO_MANY', 'Забагато невдалих спроб. Зачекайте кілька хвилин.');
   }
-  var given = typeof req.password === 'string' ? req.password.slice(0, 200) : '';
-  // Порівнюємо HMAC-відбитки, щоб не залежати від довжини пароля
-  var a = Utilities.base64Encode(Utilities.computeHmacSha256Signature(given, 'azart-login'));
-  var b = Utilities.base64Encode(Utilities.computeHmacSha256Signature(expected, 'azart-login'));
-  if (!given || !safeEqual_(a, b)) {
-    cache.put('loginFails', String(fails + 1), AZART.LOGIN_WINDOW_SEC);
-    Utilities.sleep(500);
-    fail_('BAD_PASSWORD', 'Невірний пароль');
+
+  // Вхід за паролем — лише в локальному емуляторі (DEV_PASSWORD_LOGIN), на сервері вимкнено.
+  if (typeof req.password === 'string' && !req.credential) {
+    var expected = prop_(PROPS.ADMIN_PASSWORD);
+    if (prop_(PROPS.DEV_PASSWORD_LOGIN) !== '1' || !expected) {
+      fail_('NOT_CONFIGURED', 'Вхід за паролем вимкнено: увійдіть через Google.');
+    }
+    var given = req.password.slice(0, 200);
+    var a = Utilities.base64Encode(Utilities.computeHmacSha256Signature(given, 'azart-login'));
+    var b = Utilities.base64Encode(Utilities.computeHmacSha256Signature(expected, 'azart-login'));
+    if (!given || !safeEqual_(a, b)) loginFailed_(cache, fails, 'BAD_PASSWORD', 'Невірний пароль');
+    cache.remove('loginFails');
+    return makeToken_();
+  }
+
+  var clientId = prop_(PROPS.GOOGLE_CLIENT_ID);
+  if (!clientId) {
+    fail_('NOT_CONFIGURED', 'Вхід через Google не налаштовано: додайте властивість скрипта GOOGLE_CLIENT_ID.');
+  }
+  var admins = adminEmails_();
+  if (!admins.length) {
+    fail_('NOT_CONFIGURED', 'Не вдалося визначити адміністратора: додайте властивість скрипта ADMIN_EMAILS з вашою адресою Gmail.');
+  }
+  var credential = typeof req.credential === 'string' ? req.credential : '';
+  if (!credential || credential.length > 4000) loginFailed_(cache, fails, 'BAD_CREDENTIAL', 'Не вдалося перевірити вхід Google. Спробуйте ще раз.');
+
+  var info = googleTokenInfo_(credential);
+  if (!info) loginFailed_(cache, fails, 'BAD_CREDENTIAL', 'Не вдалося перевірити вхід Google. Спробуйте ще раз.');
+  if (String(info.aud) !== clientId) {
+    loginFailed_(cache, fails, 'BAD_CREDENTIAL', 'Вхід призначений для іншого застосунку: GOOGLE_CLIENT_ID на сервері не збігається з config.js сайту.');
+  }
+  var iss = String(info.iss || '');
+  var exp = Number(info.exp || 0);
+  if ((iss !== 'accounts.google.com' && iss !== 'https://accounts.google.com') || !(exp > Math.floor(Date.now() / 1000))) {
+    loginFailed_(cache, fails, 'BAD_CREDENTIAL', 'Вхід Google застарів. Спробуйте ще раз.');
+  }
+  var email = String(info.email || '').toLowerCase();
+  var verified = info.email_verified === true || info.email_verified === 'true';
+  if (!email || !verified || admins.indexOf(email) < 0) {
+    loginFailed_(cache, fails, 'FORBIDDEN', 'Акаунт ' + (email || '(без адреси)') + ' не має доступу адміністратора.');
   }
   cache.remove('loginFails');
   return makeToken_();
@@ -172,7 +225,7 @@ function apiPing_() {
   try { ss_(); } catch (e) { ready = false; }
   return {
     service: 'azart-api', version: AZART.VERSION, time: iso_(),
-    ready: ready, passwordSet: !!prop_(PROPS.ADMIN_PASSWORD)
+    ready: ready, googleLogin: !!prop_(PROPS.GOOGLE_CLIENT_ID)
   };
 }
 

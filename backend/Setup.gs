@@ -54,15 +54,11 @@ function setup() {
   // 4. Секрет токенів
   tokenKey_();
 
-  // 5. Пароль адміністратора
-  if (!prop_(PROPS.ADMIN_PASSWORD)) {
-    var pass = Utilities.getUuid().replace(/-/g, '').slice(0, 12);
-    setProp_(PROPS.ADMIN_PASSWORD, pass);
-    log.push('ПАРОЛЬ АДМІНІСТРАТОРА (було не задано, створено автоматично): ' + pass);
-    log.push('Змінити: Project Settings → Script properties → ADMIN_PASSWORD.');
-  } else {
-    log.push('Пароль адміністратора вже задано.');
-  }
+  // 5. Вхід адміністратора через Google
+  if (!prop_(PROPS.GOOGLE_CLIENT_ID)) log.push('УВАГА: не задано GOOGLE_CLIENT_ID (Параметри проєкту → Властивості скрипта), вхід адміністратора не працюватиме.');
+  var admins = adminEmails_();
+  log.push(admins.length ? 'Адміністратори: ' + admins.join(', ')
+    : 'УВАГА: не вдалося визначити адміністратора. Додайте властивість ADMIN_EMAILS з вашою адресою Gmail.');
 
   // 6. Папка для фото груп
   var folder = groupPhotosFolder_();
@@ -83,7 +79,8 @@ function selfTest() {
   Object.keys(SHEETS).forEach(function (k) {
     check('Аркуш ' + SHEETS[k], function () { return readAll_(SHEETS[k]).length + ' рядків'; });
   });
-  check('ADMIN_PASSWORD', function () { if (!prop_(PROPS.ADMIN_PASSWORD)) throw new Error('не задано'); return 'задано'; });
+  check('GOOGLE_CLIENT_ID', function () { if (!prop_(PROPS.GOOGLE_CLIENT_ID)) throw new Error('не задано'); return 'задано'; });
+  check('Адміністратори', function () { var a = adminEmails_(); if (!a.length) throw new Error('не визначено: задайте ADMIN_EMAILS'); return a.join(', '); });
   check('Папка фото груп', function () { return groupPhotosFolder_().getName(); });
   check('Ціни', function () { return Object.keys(getPrices_()).length + ' ключів'; });
   out.forEach(function (l) { console.log(l); });

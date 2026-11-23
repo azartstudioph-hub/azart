@@ -117,10 +117,30 @@ class Spreadsheet {
   deleteSheet(s) { this.sheets = this.sheets.filter((x) => x !== s); }
 }
 
+const TOKENINFO = 'https://oauth2.googleapis.com/tokeninfo?id_token=';
+
+/** Імітація «входу через Google» для розробки: credential = 'dev.' + base64url(JSON {email, aud, ...}). */
+function devCredential(email, aud = 'dev-client-id', extra = {}) {
+  const body = { email, aud, email_verified: 'true', iss: 'accounts.google.com', ...extra };
+  return 'dev.' + Buffer.from(JSON.stringify(body)).toString('base64url');
+}
+
+/** Відповідь як у https://oauth2.googleapis.com/tokeninfo: 200 з вмістом токена або 400. */
+function devTokenInfo(credential, now) {
+  const reply = (code, obj) => ({ getResponseCode: () => code, getContentText: () => JSON.stringify(obj) });
+  if (!credential.startsWith('dev.')) return reply(400, { error: 'invalid_token' });
+  try {
+    const t = JSON.parse(Buffer.from(credential.slice(4), 'base64url').toString('utf8'));
+    return reply(200, { exp: String(Math.floor(now / 1000) + 3600), ...t });
+  } catch (e) { return reply(400, { error: 'invalid_token' }); }
+}
+
 function createGas(opts = {}) {
   const dir = opts.dir || path.join(__dirname, '..', 'backend');
   const clock = { t: opts.now || Date.now() };
-  const props = Object.assign({}, opts.props || {});
+  // DEV_PASSWORD_LOGIN: у емуляторі дозволено вхід за паролем (для тестів); на сервері його немає.
+  const props = Object.assign({ DEV_PASSWORD_LOGIN: '1' }, opts.props || {});
+  const owner = opts.owner || 'azartstudioph@gmail.com';
   const cache = new Map();
   const spreadsheets = new Map();
   const driveFiles = new Map();
@@ -205,7 +225,11 @@ function createGas(opts = {}) {
       getFileById: (id) => { const f = driveFiles.get(id); if (!f) throw new Error('No file ' + id); return f; }
     },
     ScriptApp: { getService: () => ({ getUrl: () => opts.serviceUrl || 'https://script.google.com/macros/s/DEV/exec' }) },
-    UrlFetchApp: { fetch: (url, o) => (opts.fetch ? opts.fetch(url, o) : (() => { throw new Error('UrlFetchApp not stubbed: ' + url); })()) }
+    Session: { getEffectiveUser: () => ({ getEmail: () => owner }) },
+    UrlFetchApp: { fetch: (url, o) => {
+      if (url.startsWith(TOKENINFO)) return devTokenInfo(decodeURIComponent(url.slice(TOKENINFO.length)), clock.t);
+      return opts.fetch ? opts.fetch(url, o) : (() => { throw new Error('UrlFetchApp not stubbed: ' + url); })();
+    } }
   };
   const ctx = vm.createContext(sandbox);
 
@@ -243,4 +267,4 @@ function createGas(opts = {}) {
   };
 }
 
-module.exports = { createGas };
+module.exports = { devCredential, createGas };
