@@ -60,3 +60,34 @@ test('забагато невдалих спроб — TOO_MANY', () => {
   for (let i = 0; i < 10; i++) login(g, 'stranger@example.com');
   assert.equal(login(g, 'azartstudioph@gmail.com').error.code, 'TOO_MANY');
 });
+
+test('вхід діє 14 днів і подовжується, поки адміністратор працює', () => {
+  const g = gas();
+  const DAY = 24 * 3600 * 1000;
+  const r = login(g, 'azartstudioph@gmail.com').data;
+  assert.ok(r.expiresAt - Date.now() > 13.9 * DAY, 'токен на 14 днів');
+  // через 13 днів без роботи — ще діє
+  g.advance(13 * DAY);
+  const a = g.post({ action: 'getSettings', token: r.token });
+  assert.equal(a.ok, true);
+  assert.ok(a.renew && a.renew.token, 'старий токен — сервер видає новий');
+  // через ще 13 днів старий уже не діє, а подовжений — діє
+  g.advance(13 * DAY);
+  assert.equal(g.post({ action: 'getSettings', token: r.token }).error.code, 'UNAUTHORIZED');
+  assert.equal(g.post({ action: 'getSettings', token: a.renew.token }).ok, true);
+});
+
+test('свіжий токен не подовжується на кожен запит; публічні дії — без подовження', () => {
+  const g = gas();
+  const tok = login(g, 'azartstudioph@gmail.com').data.token;
+  assert.equal(g.post({ action: 'getSettings', token: tok }).renew, undefined);
+  g.advance(2 * 24 * 3600 * 1000);
+  assert.equal(g.post({ action: 'whoami', token: tok }).renew, undefined);
+});
+
+test('без ADMIN_EMAILS ключ входу не залежить від пошуку власника', () => {
+  const g = gas();
+  const tok = login(g, 'azartstudioph@gmail.com').data.token;
+  g.ctx.Session.getEffectiveUser = () => ({ getEmail: () => '' });   // Google на мить не віддав адресу
+  assert.equal(g.post({ action: 'whoami', token: tok }).data.admin, true);
+});
