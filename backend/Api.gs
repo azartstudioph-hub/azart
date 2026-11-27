@@ -36,7 +36,10 @@ function doPost(e) {
 
     if (route.admin && !isAdmin_(req.token)) fail_('UNAUTHORIZED', 'Потрібен вхід адміністратора');
 
-    return json_({ ok: true, data: route.fn(req) });
+    var out = { ok: true, data: route.fn(req) };
+    // Адміністратор працює — подовжуємо вхід, щоб не викидало посеред роботи.
+    if (route.admin) { var renew = renewToken_(req.token); if (renew) out.renew = renew; }
+    return json_(out);
   } catch (err) {
     if (err instanceof ApiError_) {
       return json_({ ok: false, error: { code: err.code, message: err.message } });
@@ -94,8 +97,10 @@ function tokenKey_() {
     secret = Utilities.getUuid() + Utilities.getUuid();
     setProp_(PROPS.TOKEN_SECRET, secret);
   }
-  // Зміна списку адміністраторів автоматично анулює всі видані входи.
-  return secret + '|' + adminEmails_().join(',');
+  // Зміна ADMIN_EMAILS автоматично анулює всі видані входи. Береться саме властивість,
+  // без пошуку власника скрипта: ключ має бути однаковим у кожному запиті.
+  var emails = prop_(PROPS.ADMIN_EMAILS).toLowerCase().split(/[\s,;]+/).filter(Boolean).sort().join(',');
+  return secret + '|' + emails;
 }
 
 function sign_(text) {
@@ -128,6 +133,17 @@ function isAdmin_(token) {
     return payload && payload.v === 1 && Number(payload.exp) > Math.floor(Date.now() / 1000);
   } catch (e) {
     return false;
+  }
+}
+
+/** Новий токен замість чинного, якщо тому вже більше доби (інакше null). */
+function renewToken_(token) {
+  try {
+    var payload = JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(String(token).split('.')[0])).getDataAsString());
+    var left = Number(payload.exp) - Math.floor(Date.now() / 1000);
+    return left < AZART.TOKEN_TTL_SEC - AZART.TOKEN_RENEW_SEC ? makeToken_() : null;
+  } catch (e) {
+    return null;
   }
 }
 

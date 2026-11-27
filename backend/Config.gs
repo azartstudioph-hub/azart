@@ -40,7 +40,8 @@ var AZART = {
     maxUploadBytes: 3000000
   },
 
-  TOKEN_TTL_SEC: 12 * 60 * 60,
+  TOKEN_TTL_SEC: 14 * 24 * 60 * 60,   // вхід адміністратора діє 14 днів ...
+  TOKEN_RENEW_SEC: 24 * 60 * 60,      // ... і подовжується, якщо він старший за добу і ним користуються
   LOGIN_MAX_FAILS: 10,          // невдалих спроб ...
   LOGIN_WINDOW_SEC: 10 * 60,    // ... за такий проміжок => блокування
   IDEMPOTENCY_TTL_SEC: 6 * 60 * 60,

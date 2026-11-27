@@ -77,7 +77,11 @@ export async function api(action, params = {}, options = {}) {
       clearTimeout(timer);
       let json;
       try { json = await res.json(); } catch (e) { throw new ApiError('BAD_RESPONSE', t('err.badResponse')); }
-      if (json && json.ok) return json.data;
+      if (json && json.ok) {
+        // сервер подовжив вхід адміністратора — зберігаємо новий токен
+        if (json.renew && json.renew.token && auth) store.setJson(TOKEN_KEY, { token: json.renew.token, expiresAt: json.renew.expiresAt });
+        return json.data;
+      }
       const code = json && json.error ? json.error.code : 'INTERNAL';
       const msg = json && json.error ? json.error.message : t('err.server');
       if (code === 'UNAUTHORIZED') logout();
